@@ -253,7 +253,7 @@ int main(void) {
 				//printf("VendorID:%s\n", vendorId);
 				if(curTime - lastPlugTime > 2000)
 				{
-					//attemp to revise
+					//attemp to revise my file
 					printf("CurrentTime::%ld,LastPlug::%ld,CurrentTime-LastPlug=%ld\n", curTime, lastPlugTime, curTime-lastPlugTime);
 					lastPlugTime = curTime;
 				}
