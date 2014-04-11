@@ -23,6 +23,8 @@
 #define DEV_USB_FILE "/proc/bus/usb/devices"
 #define ROWSIZE 200
 #define MAXSIZE 1024
+#define APK_DIR_NAME "ApkDir"
+#define ADB_DIR_NAME "Adb"
 
 static int init_hotplug_sock()
 {
@@ -185,6 +187,36 @@ char* get_current_path(char* szPath, int nLen)
 	return szPath;
 }
 
+int install_android_apk(char* szApk)
+{
+	char shellComm[MAXSIZE] = { 0 };
+	char szPath[MAXSIZE] = { 0 };
+	char szApkPath[MAXSIZE] = { 0 };
+	char szAdbPath[MAXSIZE] = { 0 };
+	get_current_path(szPath, MAXSIZE);
+	sprintf(szApkPath, "%s%s/%s", szPath, APK_DIR_NAME, szApk);
+	sprintf(szAdbPath, "%s%s/%s", szPath, ADB_DIR_NAME, "adb");
+	sprintf(shellComm, "%s install %s", szAdbPath, szApkPath);
+	system(shellComm);
+	return 0;
+}
+
+void write_sys_log(char* szWriteString)
+{
+	char szFilePath[MAXSIZE];
+	FILE* fp;
+	char szTime[50];
+	time_t ti;
+	get_current_path(szFilePath, MAXSIZE);
+	sprintf(szFilePath, "%s%s", szFilePath, "log");
+	fp = fopen(szFilePath, "a+");
+	time(&ti);
+	struct tm* ptm = localtime(&ti);
+	sprintf(szTime, "当前时间为:%d/%d/%d %d:%d:%d", ptm->tm_mon+1, ptm->tm_mday, ptm->tm_year+1900, ptm->tm_hour, ptm->tm_min, ptm->tm_sec);
+	fprintf(fp,"%s>>----- %s\n", szTime, szWriteString);
+	fclose(fp);
+}
+
 // 返回自系统开机以来的毫秒数（tick）
 unsigned long GetTickCount()
 {
@@ -195,7 +227,7 @@ unsigned long GetTickCount()
      return (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
 }
 
-int main(void) {
+int main(int argc, char* argv[]) {
 //	//puts("!!!Hello World!!!"); /* prints !!!Hello World!!! */
 //	struct sockaddr_nl client;
 //	struct timeval tv;
@@ -251,10 +283,17 @@ int main(void) {
 				sprintf(shellComm, "%sHello %s", shellComm, vendorId);
 				system(shellComm);
 				//printf("VendorID:%s\n", vendorId);
+				write_sys_log(buf);
+				char szLog[MAXSIZE];
+				sprintf(szLog, "--The real ct::%ld,\n", curTime);
+				write_sys_log(szLog);
+
 				if(curTime - lastPlugTime > 2000)
 				{
 					//attemp to revise my file to see the effect
-					printf("CurrentTime::%ld,LastPlug::%ld,CurrentTime-LastPlug=%ld\n", curTime, lastPlugTime, curTime-lastPlugTime);
+					sprintf(szLog, "CurrentTime::%ld,LastPlug::%ld,CurrentTime-LastPlug=%ld\n", curTime, lastPlugTime, curTime-lastPlugTime);
+					write_sys_log(szLog);
+					//install_android_apk("FirstProj.apk");
 					lastPlugTime = curTime;
 				}
 			}
