@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <pwd.h>
 #include <unistd.h>
+#include <string.h>
 
 #define DEV_ANDROID_FILE "/etc/udev/rules.d/50-android.rules"
 #define ROWSIZE 200
@@ -25,7 +26,7 @@ _Bool venidIsExsit(FILE *fp, char *szVendor)
 	while(fgets(szRow, ROWSIZE, fp) != NULL && szRow[0] != '\n')
 	{
 		int i;
-		int nLen = strlen(szRow);
+		//int nLen = strlen(szRow);
 		//szRow[nLen - 1] = '\0';
 		//printf("%s %d\n", szRow, nLen-1);
 		char szVenTmp[10] = {0};
@@ -57,7 +58,7 @@ char* formOneRow(const char *szVendor, const char *szUser, char *szRow, int nCou
 int main(int argc, char *argv[]) {
 	FILE *fp;
 	struct passwd *pwd;
-	char *szOneRow[ROWSIZE] = {0};
+	char szOneRow[ROWSIZE] = {0};
 	//printf("%s\n", getpwuid(getuid())->pw_name);
 	if(argc < 2)
 	{
@@ -66,7 +67,7 @@ int main(int argc, char *argv[]) {
 	}
 	if((fp = fopen(DEV_ANDROID_FILE, "a+")) == NULL)
 	{
-		printf("\Can not open file!\n");
+		printf("Can not open file!\n");
 	}
 	//memcpy(szOneRow, 0, sizeof(szOneRow));
 	if(!venidIsExsit(fp, argv[1]))
