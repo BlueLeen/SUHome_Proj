@@ -21,6 +21,7 @@
 #define CFG_DIR_NAME "cfg"
 #define CFG_FILE_NAME "setting"
 #define CFG_SEC_TIME "Time"
+#define SOCKET_STATR_TOKEN "Start-The socket created by leen.Email:blueleen@163.com"
 
 int global_client_sockfd = 0;
 
@@ -192,7 +193,8 @@ int main(int argc, char* argv[]) {
 //         buf[len]='\0';
 //    printf("%s",buf); //打印服务器端信息
     strcpy(buf, szTime);
-    send_socket_packs(buf, strlen(szTime));
+    //send_socket_packs(buf, strlen(szTime));
+    send_socket_packs(SOCKET_STATR_TOKEN, strlen(SOCKET_STATR_TOKEN));
     receive_socket_packs(buf, BUFSIZ);
     printf("%s\n", buf);
 
