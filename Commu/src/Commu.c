@@ -41,10 +41,12 @@ int start_client_socket(const char* szRemoteSrvAddr, int nConnPort)
     }
 
     /*将套接字绑定到服务器的网络地址上*/
-    if(connect(global_client_sockfd,(struct sockaddr *)&remote_addr,sizeof(struct sockaddr))<0)
+    //while表示如果连接服务器不成功一直尝试进行连接
+    while(connect(global_client_sockfd,(struct sockaddr *)&remote_addr,sizeof(struct sockaddr))<0)
     {
+    	sleep(2);
         perror("connect");
-        return 0;
+        //return 0;
     }
     return global_client_sockfd;
 }
@@ -188,30 +190,57 @@ int main(int argc, char* argv[]) {
 	szTime = get_download_time();
 	char buf[BUFSIZ] = { 0 };
     printf("connected to server\n");
-    start_client_socket("192.168.5.7", 8000);
-//    len=recv(client_sockfd,buf,BUFSIZ,0);//接收服务器端信息
-//         buf[len]='\0';
-//    printf("%s",buf); //打印服务器端信息
-    strcpy(buf, szTime);
-    //send_socket_packs(buf, strlen(szTime));
-    send_socket_packs(SOCKET_STATR_TOKEN, strlen(SOCKET_STATR_TOKEN));
-    receive_socket_packs(buf, BUFSIZ);
-    printf("%s\n", buf);
-
-    /*循环的发送接收信息并打印接收信息--recv返回接收到的字节数，send返回发送的字节数*/
-    while(1)
+    while(buf[0] == 0)
     {
-        printf("Enter string to send:");
-        scanf("%s",buf);
-        if(!strcmp(buf,"quit"))
-            break;
-//        len=send(client_sockfd,buf,strlen(buf),0);
-//        len=recv(client_sockfd,buf,BUFSIZ,0);
-//        buf[len]='\0';
-        send_socket_packs(buf, strlen(buf));
+        start_client_socket("192.168.5.7", 8000);
+    //    len=recv(client_sockfd,buf,BUFSIZ,0);//接收服务器端信息
+    //         buf[len]='\0';
+    //    printf("%s",buf); //打印服务器端信息
+        send_socket_packs(SOCKET_STATR_TOKEN, strlen(SOCKET_STATR_TOKEN));
         receive_socket_packs(buf, BUFSIZ);
-        printf("received:%s\n",buf);
+        if(buf[0]!='S' || buf[11]!='W')
+        {
+        	memset(buf, 0, BUFSIZ);
+        	close_client_socket();
+        }
+        printf("%s\n", buf);
     }
+    strcpy(buf, szTime);
+    send_socket_packs(buf, strlen(szTime));
+    /*循环的发送接收信息并打印接收信息--recv返回接收到的字节数，send返回发送的字节数*/
+    receive_socket_packs(buf, BUFSIZ);
+    if(buf[1]=='u' && buf[2]=='p')
+    {
+    	//printf("%s\n", buf+2);
+        while(receive_socket_packs(buf, BUFSIZ) && buf[0] == 's')
+        {
+        	receive_socket_packs(buf, BUFSIZ);
+        	if(buf[0] == 's')
+        	{
+        		//while()
+        	}
+            printf("Enter string to send:");
+            scanf("%s",buf);
+            if(!strcmp(buf,"quit"))
+                break;
+            send_socket_packs(buf, strlen(buf));
+            receive_socket_packs(buf, BUFSIZ);
+            printf("received:%s\n",buf);
+        }
+    }
+//    while(1)
+//    {
+//        printf("Enter string to send:");
+//        scanf("%s",buf);
+//        if(!strcmp(buf,"quit"))
+//            break;
+////        len=send(client_sockfd,buf,strlen(buf),0);
+////        len=recv(client_sockfd,buf,BUFSIZ,0);
+////        buf[len]='\0';
+//        send_socket_packs(buf, strlen(buf));
+//        receive_socket_packs(buf, BUFSIZ);
+//        printf("received:%s\n",buf);
+//    }
 //    close(client_sockfd);//关闭套接字
     close_client_socket();
 	return EXIT_SUCCESS;
