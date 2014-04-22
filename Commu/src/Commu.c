@@ -17,11 +17,13 @@
 #include <string.h>
 #include <unistd.h>
 
-#define MAXSIZE 1024
+#define SMALLSIZE 100
+#define MAXSIZE   1024
 #define CFG_DIR_NAME "cfg"
 #define CFG_FILE_NAME "setting"
 #define CFG_SEC_TIME "Time"
 #define SOCKET_STATR_TOKEN "Start-The socket created by leen.Email:blueleen@163.com"
+#define APK_DIR_NAME "ApkDir"
 
 int global_client_sockfd = 0;
 
@@ -196,7 +198,7 @@ int main(int argc, char* argv[]) {
     //    len=recv(client_sockfd,buf,BUFSIZ,0);//接收服务器端信息
     //         buf[len]='\0';
     //    printf("%s",buf); //打印服务器端信息
-        send_socket_packs(SOCKET_STATR_TOKEN, strlen(SOCKET_STATR_TOKEN));
+        send_socket_packs(SOCKET_STATR_TOKEN, strlen(SOCKET_STATR_TOKEN)+1);
         receive_socket_packs(buf, BUFSIZ);
         if(buf[0]!='S' || buf[11]!='W')
         {
@@ -206,26 +208,53 @@ int main(int argc, char* argv[]) {
         printf("%s\n", buf);
     }
     strcpy(buf, szTime);
-    send_socket_packs(buf, strlen(szTime));
+    send_socket_packs(buf, strlen(szTime)+1);
     /*循环的发送接收信息并打印接收信息--recv返回接收到的字节数，send返回发送的字节数*/
+    memset(buf, 0, sizeof(buf));
     receive_socket_packs(buf, BUFSIZ);
     if(buf[1]=='u' && buf[2]=='p')
     {
     	//printf("%s\n", buf+2);
+    	send_socket_packs(buf, strlen(buf));
         while(receive_socket_packs(buf, BUFSIZ) && buf[0] == 's')
         {
-        	receive_socket_packs(buf, BUFSIZ);
-        	if(buf[0] == 's')
+        	char szFile[MAXSIZE] = { 0 };
+        	char szFileName[SMALLSIZE] = { 0 };
+        	int len = 0;
+        	get_current_path(szFile, MAXSIZE);
+        	strcpy(szFileName, buf+2);
+        	sprintf(szFile, "%s%s/%s.apk", szFile,APK_DIR_NAME,szFileName);
+        	FILE* fp = fopen(szFile, "a+b");
+        	fseek(fp, 0, SEEK_SET );
+        	memset(buf, 0, sizeof(buf));
+        	//len=receive_socket_packs(buf, BUFSIZ);
+        	while((len=receive_socket_packs(buf, BUFSIZ)) > 0)
         	{
-        		//while()
+//        		if(len < BUFSIZ)
+//        		{
+//        			char szEnd[SMALLSIZE] = { 0 };
+//        			sprintf(szEnd, "e %s", szFileName);
+//        			if(!strcmp(buf, szEnd))
+//        			{
+//        				break;
+//        			}
+//        		}
+        		fwrite(buf, 1, len, fp);
         	}
-            printf("Enter string to send:");
-            scanf("%s",buf);
-            if(!strcmp(buf,"quit"))
-                break;
-            send_socket_packs(buf, strlen(buf));
-            receive_socket_packs(buf, BUFSIZ);
-            printf("received:%s\n",buf);
+        	fclose(fp);
+        	sprintf(buf, "%s %s", "end", szFileName);
+        	send_socket_packs(buf, strlen(buf)+1);
+//        	if(buf[0] == 's')
+//        	{
+//        		//while()
+//        	}
+//            printf("Enter string to send:");
+//            scanf("%s",buf);
+//            if(!strcmp(buf,"quit"))
+//                break;
+//            send_socket_packs(buf, strlen(buf));
+//            receive_socket_packs(buf, BUFSIZ);
+//            printf("received:%s\n",buf);
         }
     }
 //    while(1)
