@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #define SMALLSIZE 100
+#define RCVSIZE   512
 #define MAXSIZE   1024
 #define CFG_DIR_NAME "cfg"
 #define CFG_FILE_NAME "setting"
@@ -228,17 +229,20 @@ int main(int argc, char* argv[]) {
         	fseek(fp, 0, SEEK_SET );
         	memset(buf, 0, sizeof(buf));
         	//len=receive_socket_packs(buf, BUFSIZ);
-        	while((len=receive_socket_packs(buf, BUFSIZ)) > 0)
+        	while((len=receive_socket_packs(buf, SMALLSIZE)) > 0)
+        	//while(1)
         	{
-//        		if(len < BUFSIZ)
-//        		{
-//        			char szEnd[SMALLSIZE] = { 0 };
-//        			sprintf(szEnd, "e %s", szFileName);
-//        			if(!strcmp(buf, szEnd))
-//        			{
-//        				break;
-//        			}
-//        		}
+        		if(len < SMALLSIZE)
+        		{
+        			char szEnd[SMALLSIZE] = { 0 };
+        			sprintf(szEnd, "e %s", szFileName);
+        			if(!strcmp(buf, szEnd))
+        			{
+        				break;
+        			}
+        		}
+        		//len = read(global_client_sockfd, buf, RCVSIZE);
+        		//if(len == 0) break;
         		fwrite(buf, 1, len, fp);
         	}
         	fclose(fp);
