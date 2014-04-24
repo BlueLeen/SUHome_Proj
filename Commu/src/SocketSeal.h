@@ -2,18 +2,22 @@
 #define _SOCKET_SEAL__0X20140423165500
 
 #include <sys/socket.h>
+#include "BufferSeal.h"
+#include "FileSeal.h"
 
+#define RCVSIZE   512
 #define MAXSIZE   1024
-#define BUFFERSIZE MAXSIZE*MAXSIZE*3
+#define BUFFERSIZE MAXSIZE*MAXSIZE*4
 
 
 unsigned char global_client_buffer[BUFFERSIZE];
 
-typedef struct _bufRecv
-{
-	unsigned char* szStart;
-	int nSize;
-}RecvBuf;
+
+//typedef struct _bufRecv
+//{
+//	unsigned char* szStart;
+//	int nSize;
+//}RecvBuf;
 
 int start_client_socket(const char* szRemoteSrvAddr, int nConnPort, int* pnClientSockfd)
 {
@@ -65,30 +69,46 @@ int send_buffer(const char* szBuf, int nSize, int nClientSockfd)
 	return len;
 }
 
-RecvBuf receive_buffer(int nSize, int nClientSockfd)
+int receive_buffer(int nClientSockfd, void** pBuf)
 {
-	RecvBuf rb;
-	static int nPos = 0;
-	unsigned char* szTmp = global_client_buffer+nPos;
-	int len=recv(nClientSockfd, szTmp, nSize, 0);
-	nPos = (nPos+len) % BUFFERSIZE;
-	rb.szStart = NULL;
-	rb.nSize = 0;
-	if(*(szTmp+len) != '\0')
-		return rb;
-	rb.szStart = szTmp;
-	rb.nSize = len-5;
-	if(nPos > BUFFERSIZE-512)
+	static int nFlag = 1;
+	static int nRec = 0;
+	static int fileSize = 0;
+	unsigned char buf[RCVSIZE] = { 0 };
+	int len=recv(nClientSockfd, buf, RCVSIZE, 0);
+	if(nFlag)
 	{
-		nPos = 0;
+		fileSize = (int)(*(int*)buf);
+		nFlag = 0;
+		*pBuf = malloc(fileSize);
+#ifdef _DEBUG
+		char szLog[100] = { 0 };
+		sprintf(szLog, "<receive_buffer>File Size:%d", fileSize);
+		write_sys_log(szLog, "CommuLog");
+#endif
 	}
-	return rb;
+	memcpy(*pBuf+nRec, buf, len);
+	nRec += len;
+#ifdef _DEBUG
+		char szLog[100] = { 0 };
+		sprintf(szLog, "<receive_buffer>File Receive Current Length:%d", nRec);
+		write_sys_log(szLog, "CommuLog");
+#endif
+	if(nRec >= fileSize)
+	{
+		nFlag = 1;
+		nRec = 0;
+		return 0;
+	}
+	return 1;
 }
 
-//int parse_socket_packs(char* szBuf)
-//{
-//	int len
-//}
+void* parse_socket_packs(char* szBuf, int nLen, void* pac)
+{
+	AllocMem(szBuf, nLen, pac);
+	return pac;
+}
+
 void close_client_socket(int nClientSockfd)
 {
 	if(nClientSockfd)
