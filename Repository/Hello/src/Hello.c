@@ -18,7 +18,7 @@
 #define DEV_ANDROID_FILE "/etc/udev/rules.d/50-android.rules"
 #define ROWSIZE 200
 
-
+//
 _Bool venidIsExsit(FILE *fp, char *szVendor)
 {
 	//int i;
