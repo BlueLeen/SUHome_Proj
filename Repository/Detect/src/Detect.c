@@ -16,11 +16,14 @@
 #include <linux/netlink.h>
 #include <unistd.h>
 #include <time.h>
+#include <dirent.h>
+#include <pthread.h>
 //#include <error.h>
 //#include <errno.h>
 
 #define UEVENT_BUFFER_SIZE 2048
 #define DEV_USB_FILE "/proc/bus/usb/devices"
+#define MINSIZE 100
 #define ROWSIZE 200
 #define MAXSIZE 1024
 #define APK_DIR_NAME "ApkDir"
@@ -187,6 +190,33 @@ char* get_current_path(char* szPath, int nLen)
 	return szPath;
 }
 
+void systemDown(const char * cmdstring) {
+	pid_t pid;
+	int status;
+	if (cmdstring == NULL) {
+//		return (1); //如果cmdstring为空，返回非零值，一般为1
+		return;
+	}
+
+	if ((pid = fork()) < 0) {
+		status = -1; //fork失败，返回-1
+	} else if (pid == 0) {
+		execl("/bin/sh", "sh", "-c", cmdstring, (char *) 0);
+		_exit(127); // exec执行失败返回127，注意exec只在失败时才返回现在的进程，成功的话现在的进程就不存在啦~~
+	} else //父进程
+	{
+//		while (waitpid(pid, &status, 0) < 0) {
+//			if (errno != EINTR) {
+//				status = -1; //如果waitpid被信号中断，则返回-1
+//				break;
+//			}
+//		}
+	}
+
+//	return status; //如果waitpid成功，则返回子进程的返回状态
+}
+
+
 int install_android_apk(char* szApk)
 {
 	char shellComm[MAXSIZE] = { 0 };
@@ -196,25 +226,87 @@ int install_android_apk(char* szApk)
 	get_current_path(szPath, MAXSIZE);
 	sprintf(szApkPath, "%s%s/%s", szPath, APK_DIR_NAME, szApk);
 	sprintf(szAdbPath, "%s%s/%s", szPath, ADB_DIR_NAME, "adb");
+//	sprintf(shellComm, "%s remount", szAdbPath);
+//	systemDown(shellComm);
 	sprintf(shellComm, "%s install %s", szAdbPath, szApkPath);
-	system(shellComm);
+	write_sys_log(shellComm);
+	systemDown(shellComm);
+	system("exit");
+	return 0;
+}
+
+int listDir(char *path, char** fileArr)
+{
+	int 			 nCount = 0;
+	DIR              *pDir ;
+	struct dirent    *ent  ;
+	char              childpath[512];
+
+	pDir=opendir(path);
+	memset(childpath,0,sizeof(childpath));
+
+	while((ent=readdir(pDir))!=NULL)
+	{
+		if(ent->d_type & DT_DIR)
+		{
+			if(strcmp(ent->d_name,".")==0 || strcmp(ent->d_name,"..")==0)
+					continue;
+			sprintf(childpath,"%s/%s",path,ent->d_name);
+			printf("path:%s/n",childpath);
+			//listDir(childpath);
+		}
+		else
+		{
+			//cout<<ent->d_name<<endl;
+			strcpy(*fileArr, ent->d_name);
+			//printf("Addr:%x\n", (*fileArr));
+			//printf("String:%s\n", *fileArr);
+			fileArr++;
+			nCount++;
+		}
+	}
+	return nCount;
+}
+
+int listDirApk(char** fileArr)
+{
+	char szPath[MAXSIZE] = { 0 };
+	char szApkRootPath[MAXSIZE] = { 0 };
+	get_current_path(szPath, MAXSIZE);
+	sprintf(szApkRootPath, "%s%s", szPath, APK_DIR_NAME);
+	return listDir(szApkRootPath, fileArr);
+}
+
+int install_all_android_apk(char** szApkArr, int nCount)
+{
+	int i;
+	for(i=0; i<nCount; i++)
+		install_android_apk(szApkArr[i]);
 	return 0;
 }
 
 void write_sys_log(char* szWriteString)
 {
-	char szFilePath[MAXSIZE];
+	char szFilePath[MAXSIZE]={0};
+	char szLogPath[MAXSIZE]={0};
 	FILE* fp;
 	char szTime[50];
 	time_t ti;
 	get_current_path(szFilePath, MAXSIZE);
-	sprintf(szFilePath, "%s%s", szFilePath, "log");
-	fp = fopen(szFilePath, "a+");
+	sprintf(szLogPath, "%s%s", szFilePath, "log");
+	fp = fopen(szLogPath, "a+");
 	time(&ti);
 	struct tm* ptm = localtime(&ti);
-	sprintf(szTime, "当前时间为:%d/%d/%d %d:%d:%d", ptm->tm_mon+1, ptm->tm_mday, ptm->tm_year+1900, ptm->tm_hour, ptm->tm_min, ptm->tm_sec);
+	sprintf(szTime, "Now time is:%d/%d/%d %d:%d:%d", ptm->tm_mon+1, ptm->tm_mday, ptm->tm_year+1900, ptm->tm_hour, ptm->tm_min, ptm->tm_sec);
 	fprintf(fp,"%s>>----- %s\n", szTime, szWriteString);
 	fclose(fp);
+}
+
+void write_sys_log_int(int nWrite)
+{
+	char szString[10]={0};
+	sprintf(szString, "%d", nWrite);
+	return write_sys_log(szString);
 }
 
 // 返回自系统开机以来的毫秒数（tick）
@@ -227,41 +319,54 @@ unsigned long GetTickCount()
      return (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
 }
 
+char** AllocApkFileName()
+{
+	int i;
+	char** szArr = malloc(MINSIZE*sizeof(char*));
+	char** szArrTmp = szArr;
+	for(i=0; i<MINSIZE; i++)
+	{
+		*szArrTmp = malloc(MINSIZE*sizeof(char));
+		szArrTmp++;
+	}
+	return szArr;
+}
+
+void FreeApkFileName(char** szArr)
+{
+	int i;
+	for(i=0; i<MINSIZE; i++)
+	{
+		free(*szArr);
+	}
+	free(szArr);
+}
+
+//install Apk to Android Phone
+static void* pthread_func_install(void*);
+
 int main(int argc, char* argv[]) {
-//	//puts("!!!Hello World!!!"); /* prints !!!Hello World!!! */
-//	struct sockaddr_nl client;
-//	struct timeval tv;
-//	int cpplive, rcvlen, ret;
-//	fd_set fds;
-//	int buffersize = 1024;
-//	cpplive = socket(AF_NETLINK, SOCK_RAW, NETLINK_KOBJECT_UEVENT);
-//	memset(&client, 0, sizeof(client));
-//	client.nl_family = AF_NETLINK;
-//	client.nl_pid = getpid();
-//	client.nl_groups = 1;
-//	setsockopt(cpplive, SOL_SOCKET, SO_RCVBUF, &buffersize, sizeof(buffersize));
-//	bind(cpplive, (struct sockaddr*)&client, sizeof(client));
-//	while(1){
-//		char buf[UEVENT_BUFFER_SIZE] = { 0 };
-//		FD_ZERO(&fds);
-//		FD_SET(cpplive, &fds);
-//		tv.tv_sec = 0;
-//		tv.tv_usec = 100 * 1000;
-//		ret = select(cpplive+1, &fds, NULL, NULL, &tv);
-//		if(ret < 0)
-//			continue;
-//		//if(!(ret > 0 && FD_ISSET(cpplive, &fds)))
-//			//continue;
-//		rcvlen = recv(cpplive, &buf, sizeof(buf), 0);
-//		if(rcvlen > 0){
-//			printf("%s\n", buf);
-//		}
-//	}
-//	close(cpplive);
-//	return EXIT_SUCCESS;
+	char** pApkArray;
+
 	int hotplug_sock = init_hotplug_sock();
 
+	write_sys_log_int(hotplug_sock);
+
 	unsigned long lastPlugTime = GetTickCount();
+
+	write_sys_log_int((int)lastPlugTime);
+
+	pApkArray = AllocApkFileName();
+	//printf("Addr:%lx\n", pApkArray);
+
+	int nApkCount = listDirApk(pApkArray);
+
+	void* pBuffer = malloc(2*sizeof(unsigned char*));
+	*(unsigned char**)pBuffer = (unsigned char*)pApkArray;
+	*((unsigned char**)pBuffer+1) = (unsigned char*)nApkCount;
+
+	//printf("ConvertAddr:%lx\n", (long)*(unsigned char**)pBuffer);
+	//printf("ConvertAddr:%lx\n", (long)*((unsigned char**)pBuffer+1));
 
 	while(1)
 	{
@@ -278,22 +383,26 @@ int main(int argc, char* argv[]) {
 			if(android_vendor_id(vendorId, sizeof(vendorId)))
 			{
 				unsigned long curTime = GetTickCount();
-				char shellComm[MAXSIZE] = { 0 };
-				get_current_path(shellComm, MAXSIZE);
-				sprintf(shellComm, "%sHello %s", shellComm, vendorId);
-				system(shellComm);
+//				char shellComm[MAXSIZE] = { 0 };
+//				get_current_path(shellComm, MAXSIZE);
+//				sprintf(shellComm, "%sHello %s", shellComm, vendorId);
+//				system(shellComm);
 				//printf("VendorID:%s\n", vendorId);
-				write_sys_log(buf);
+				//write_sys_log(buf);
 				char szLog[MAXSIZE];
 				sprintf(szLog, "--The real ct::%ld,\n", curTime);
 				write_sys_log(szLog);
 
 				if(curTime - lastPlugTime > 2000)
 				{
+					pthread_t pt_recv = 0;
+
 					//attemp to revise my file to see the effect
 					sprintf(szLog, "CurrentTime::%ld,LastPlug::%ld,CurrentTime-LastPlug=%ld\n", curTime, lastPlugTime, curTime-lastPlugTime);
 					write_sys_log(szLog);
 					//install_android_apk("FirstProj.apk");
+					//install_all_android_apk(pApkArray, nApkCount);
+					pthread_create(&pt_recv, NULL, pthread_func_install, pBuffer);
 					lastPlugTime = curTime;
 				}
 			}
@@ -304,5 +413,20 @@ int main(int argc, char* argv[]) {
 
 	}
 	close(hotplug_sock);
+	FreeApkFileName(pApkArray);
+	free(pBuffer);
 	return 0;
+}
+
+static void* pthread_func_install(void* pBuf)
+{
+	pthread_detach(pthread_self());
+	sleep(2);
+	char** pApkArray = (char**)*(unsigned char**)pBuf;
+	int nApkCount = (int)*((unsigned char**)pBuf+1);
+	write_sys_log("-------Begin install Apk into the Android Phone!The count of apk File:-------");
+	write_sys_log_int(nApkCount);
+	install_all_android_apk(pApkArray, nApkCount);
+	write_sys_log("-------After install the apk File!-------");
+	return NULL;
 }
