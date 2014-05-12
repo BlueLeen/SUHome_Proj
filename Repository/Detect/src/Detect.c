@@ -380,7 +380,7 @@ int main(int argc, char* argv[]) {
 		if(plug_opp_dev(buf, strlen(buf)) == 1)
 		{
 			//printf("%s\n", buf);
-			if(android_vendor_id(vendorId, sizeof(vendorId)))
+			//if(android_vendor_id(vendorId, sizeof(vendorId)))
 			{
 				unsigned long curTime = GetTickCount();
 //				char shellComm[MAXSIZE] = { 0 };
