@@ -216,6 +216,31 @@ void systemDown(const char * cmdstring) {
 //	return status; //如果waitpid成功，则返回子进程的返回状态
 }
 
+int system2(const char * cmdstring) {
+	pid_t pid;
+	int status;
+	if (cmdstring == NULL) {
+		return (1); //如果cmdstring为空，返回非零值，一般为1
+	}
+
+	if ((pid = fork()) < 0) {
+		status = -1; //fork失败，返回-1
+	} else if (pid == 0) {
+		status = execl("/bin/sh", "sh", "-c", cmdstring, (char *) 0);
+		_exit(127); // exec执行失败返回127，注意exec只在失败时才返回现在的进程，成功的话现在的进程就不存在啦~~
+	} else //父进程
+	{
+		while (waitpid(pid, &status, 0) < 0) {
+//			if (errno != EINTR) {
+//				status = -1; //如果waitpid被信号中断，则返回-1
+//				break;
+//			}
+		}
+	}
+
+	return status; //如果waitpid成功，则返回子进程的返回状态
+}
+
 
 int install_android_apk(char* szApk)
 {
@@ -231,6 +256,76 @@ int install_android_apk(char* szApk)
 	sprintf(shellComm, "%s install %s", szAdbPath, szApkPath);
 	write_sys_log(shellComm);
 	systemDown(shellComm);
+	system("exit");
+	return 0;
+}
+
+int phone_is_online(char* buf)
+{
+	char text[20];
+	int nLen = strlen(buf);
+	int nCur = nLen - 1;
+	while(buf[nCur]==' ' || buf[nCur]=='\n')
+	{
+		buf[nCur] = '\0';
+		nCur--;
+	}
+	while(buf[nCur]!=' ' && nCur>=0 && buf[nCur]!='\t')
+	{
+		nCur--;
+	}
+	int nTextLen = strlen(buf) - nCur;
+	if(nTextLen > sizeof(text))
+		return 2;
+	if(!strcmp(buf+nCur+1, "offline"))
+		return 0;
+	else
+		return 1;
+}
+
+int install_android_apk_from_dir()
+{
+	char shellComm[MAXSIZE] = { 0 };
+	char szPath[MAXSIZE] = { 0 };
+	char szApkPath[MAXSIZE] = { 0 };
+	char szAdbPath[MAXSIZE] = { 0 };
+	get_current_path(szPath, MAXSIZE);
+	sprintf(szApkPath, "%s%s/", szPath, APK_DIR_NAME);
+	sprintf(szAdbPath, "%s%s/%s", szPath, ADB_DIR_NAME, "adb");
+//	sprintf(shellComm, "%s remount", szAdbPath);
+//	systemDown(shellComm);
+	sprintf(shellComm, "%s kill-server", szAdbPath, szApkPath);
+
+	char shellCommDevice[MAXSIZE] = { 0 };
+	sprintf(shellCommDevice, "%s devices > text", szAdbPath, szApkPath);
+	//int status = system(shellComm);
+
+	while(system(shellComm)==0)
+	{
+		//int m = system(shellComm);
+		FILE *fpin, *fpout;
+		char line[ROWSIZE] = { 0 };
+		char line_last[ROWSIZE] = { 0 };
+		//if((fpout=popen(shellCommDevice, "w") != NULL))
+		system(shellCommDevice);
+		{
+			fpin = fopen("text", "r");
+			while(fgets(line, ROWSIZE, fpin) != NULL)
+			{
+				if(!strcmp(line, "\n")) continue;
+				strcpy(line_last, line);
+			}
+			if(strcmp(line_last, "") && phone_is_online(line_last))
+			{
+				fclose(fpin);
+				break;
+			}
+			fclose(fpin);
+		}
+	}
+	sprintf(shellComm, "%s install -r %s", szAdbPath, szApkPath);
+	write_sys_log(shellComm);
+	system(shellComm);
 	system("exit");
 	return 0;
 }
@@ -426,7 +521,8 @@ static void* pthread_func_install(void* pBuf)
 	int nApkCount = (int)*((unsigned char**)pBuf+1);
 	write_sys_log("-------Begin install Apk into the Android Phone!The count of apk File:-------");
 	write_sys_log_int(nApkCount);
-	install_all_android_apk(pApkArray, nApkCount);
+	//install_all_android_apk(pApkArray, nApkCount);
+	install_android_apk_from_dir();
 	write_sys_log("-------After install the apk File!-------");
 	return NULL;
 }
