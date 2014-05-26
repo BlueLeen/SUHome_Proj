@@ -29,6 +29,8 @@
 #define APK_DIR_NAME "ApkDir"
 #define ADB_DIR_NAME "Adb"
 
+#define MESSAGE_CENTER  "/MessCenter.7687"
+
 static int init_hotplug_sock()
 {
 	const int buffersize = 1024;
@@ -375,17 +377,7 @@ int main(int argc, char* argv[]) {
 
 	write_sys_log_int((int)lastPlugTime);
 
-//	pApkArray = AllocApkFileName();
-//	//printf("Addr:%lx\n", pApkArray);
-//
-//	int nApkCount = listDirApk(pApkArray);
-//
-//	void* pBuffer = malloc(2*sizeof(unsigned char*));
-//	*(unsigned char**)pBuffer = (unsigned char*)pApkArray;
-//	*((unsigned char**)pBuffer+1) = (unsigned char*)nApkCount;
-
-	//printf("ConvertAddr:%lx\n", (long)*(unsigned char**)pBuffer);
-	//printf("ConvertAddr:%lx\n", (long)*((unsigned char**)pBuffer+1));
+	mqcreate(MESSAGE_CENTER);
 
 	while(1)
 	{
@@ -402,12 +394,6 @@ int main(int argc, char* argv[]) {
 			//if(android_vendor_id(vendorId, sizeof(vendorId)))
 			{
 				unsigned long curTime = GetTickCount();
-//				char shellComm[MAXSIZE] = { 0 };
-//				get_current_path(shellComm, MAXSIZE);
-//				sprintf(shellComm, "%sHello %s", shellComm, vendorId);
-//				system(shellComm);
-				//printf("VendorID:%s\n", vendorId);
-				//write_sys_log(buf);
 				char szLog[MAXSIZE];
 				sprintf(szLog, "--The real ct::%ld,\n", curTime);
 				write_sys_log(szLog);
@@ -415,14 +401,13 @@ int main(int argc, char* argv[]) {
 				if(curTime - lastPlugTime > 2000)
 				{
 					pthread_t pt_recv = 0;
-
 					//attemp to revise my file to see the effect
 					sprintf(szLog, "CurrentTime::%ld,LastPlug::%ld,CurrentTime-LastPlug=%ld\n", curTime, lastPlugTime, curTime-lastPlugTime);
 					write_sys_log(szLog);
-					//install_android_apk("FirstProj.apk");
-					//install_all_android_apk(pApkArray, nApkCount);
 					pthread_create(&pt_recv, NULL, pthread_func_install, NULL);
 					lastPlugTime = curTime;
+					mqsend(MESSAGE_CENTER, "i eserve.apk");
+					printf("sendMessage::\n");
 				}
 			}
 		}
@@ -432,8 +417,6 @@ int main(int argc, char* argv[]) {
 
 	}
 	close(hotplug_sock);
-	//FreeApkFileName(pApkArray);
-	//free(pBuffer);
 	return 0;
 }
 
@@ -441,12 +424,8 @@ static void* pthread_func_install(void* pBuf)
 {
 	pthread_detach(pthread_self());
 	sleep(2);
-//	char** pApkArray = (char**)*(unsigned char**)pBuf;
-//	int nApkCount = (int)*((unsigned char**)pBuf+1);
-//	write_sys_log("-------Begin install Apk into the Android Phone!The count of apk File:-------");
-//	write_sys_log_int(nApkCount);
-	//install_all_android_apk(pApkArray, nApkCount);
 	install_android_apk("eserve.apk");
+	//mqrecv(MESSAGE_CENTER, 0);
 	write_sys_log("-------After install the apk File!-------");
 	return NULL;
 }
