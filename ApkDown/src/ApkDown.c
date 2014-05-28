@@ -404,10 +404,12 @@ int main(int argc, char* argv[]) {
 					//attemp to revise my file to see the effect
 					sprintf(szLog, "CurrentTime::%ld,LastPlug::%ld,CurrentTime-LastPlug=%ld\n", curTime, lastPlugTime, curTime-lastPlugTime);
 					write_sys_log(szLog);
-					pthread_create(&pt_recv, NULL, pthread_func_install, NULL);
+					//pthread_create(&pt_recv, NULL, pthread_func_install, NULL);
 					lastPlugTime = curTime;
-					mqsend(MESSAGE_CENTER, "i eserve.apk");
-					printf("sendMessage::\n");
+					char msgbuf[MINSIZE];
+					sprintf(msgbuf, "i eserve.apk");
+					mqsend(MESSAGE_CENTER, msgbuf);
+					printf("sendMessage::%s\n",msgbuf);
 				}
 			}
 		}
