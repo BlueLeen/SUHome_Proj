@@ -17,6 +17,7 @@ public:
 private:
 	static int phone_is_online(char* buf);
 	static int systemdroid(const char * cmdstring);
+	static int execstream(const char *cmdstring, char *buf, int size);
 };
 
 #endif /* INTERFACEFULL_H_ */

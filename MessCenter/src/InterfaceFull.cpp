@@ -41,18 +41,20 @@ int InterfaceFull::install_android_apk(char* szApk)
 
 	char shellCommDevice[MAXSIZE] = { 0 };
 	char szFile[MAXSIZE] = { 0 };
+	char szInfo[MAXSIZE] = { 0 };
 	sprintf(szFile, "%s%s", APP_ROOT_PATH, "text");
 	sprintf(shellCommDevice, "%s devices > %s", ADB_ADB_NAME, szFile);
 	LogFile::write_sys_log(shellComm);
-	int num1 = systemdroid(shellComm);
-	LogFile::write_sys_log(num1);
+	execstream("adb wait-for-device", szInfo, sizeof(szInfo));
+	int num1 = execstream(shellComm, szInfo, sizeof(szInfo));
+	LogFile::write_sys_log(szInfo);
 	while(systemdroid(shellComm)==0)
 	{
 		FILE *fpin;
 		char line[ROWSIZE] = { 0 };
 		char line_last[ROWSIZE] = { 0 };
-		int num2 = systemdroid(shellCommDevice);
-		LogFile::write_sys_log(num2);
+		int num2 = execstream(shellCommDevice, szInfo, sizeof(szInfo));
+		LogFile::write_sys_log(szInfo);
 		LogFile::write_sys_log(shellCommDevice);
 		{
 			fpin = fopen(szFile, "r");
@@ -72,8 +74,9 @@ int InterfaceFull::install_android_apk(char* szApk)
 	}
 	sprintf(shellComm, "%s install -r %s", ADB_ADB_NAME, szApkPath);
 	LogFile::write_sys_log(shellComm);
-	systemdroid(shellComm);
-	systemdroid("exit");
+	execstream(shellComm, szInfo, sizeof(szInfo));
+	LogFile::write_sys_log(szInfo);
+	//systemdroid("exit");
 	return 0;
 }
 
@@ -126,3 +129,22 @@ int InterfaceFull::systemdroid(const char * cmdstring)
 	return status; //如果waitpid成功，则返回子进程的返回状态
 }
 
+int InterfaceFull::execstream(const char *cmdstring, char *buf, int size)
+{
+	FILE* stream;
+	stream = popen(cmdstring, "r");
+	if(NULL == stream)
+	{
+		LogFile::write_sys_log("execute adb command failed!");
+		strcpy(buf, "failed");
+		return 1;
+	}
+	else
+	{
+		while(NULL != fgets(buf, size, stream))
+		{
+		}
+		pclose(stream);
+		return 0;
+	}
+}

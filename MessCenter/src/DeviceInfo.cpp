@@ -8,7 +8,7 @@
 #include "DeviceInfo.h"
 
 DeviceInfo::DeviceInfo()
-:m_nUsbNum(-1),m_nState(0),m_nFormat(0)
+:m_nCode(-1),m_nUsbNum(-1),m_nState(0),m_nFormat(0)
 {
 	// TODO Auto-generated constructor stub
 }

@@ -15,6 +15,8 @@
 
 //typedef unsigned long int pthread_t;
 
+AsynCall* DeviceDetect::m_call = NULL;
+
 DeviceDetect::DeviceDetect() {
 	// TODO Auto-generated constructor stub
 
@@ -33,7 +35,7 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 {
 	pthread_detach((unsigned long int)pthread_self());
 
-	AsynCall* call = (AsynCall*)ptr;
+	m_call = (AsynCall*)ptr;
 
 	while(1)
 	{
@@ -41,14 +43,16 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 		PlugEvent event;
 		int recvlen = 0;
 		char buf[UEVENT_BUFFER_SIZE] = {0};
-		LogFile::write_sys_log("begin my detect new devices:");
 		recvlen = event.recv_hotplug_sock(buf, sizeof(buf));
 		if(recvlen > 0)
 		{
+			pthread_t pt_recv = 0;
 			DeviceInfo* pDev = new DeviceInfo();
+			pDev->m_nCode = plug_opp_dev(buf, strlen(buf));
 			pDev->m_nState = 3;
 			LogFile::write_sys_log(buf);
-			call->AsynCallback(1 , *pDev);
+
+			pthread_create(&pt_recv, NULL, pthread_func_call, pDev);
 		}
 	}
 	return 0;
@@ -80,5 +84,18 @@ int DeviceDetect::plug_opp_dev(char* usb_message, int nLen)
 	{
 		return 6;//if remove the device,return 1
 	}
+	return 0;
+}
+
+void* DeviceDetect::pthread_func_call(void* ptr)
+{
+	pthread_detach((unsigned long int)pthread_self());
+
+	DeviceInfo* pDev = (DeviceInfo*)ptr;
+
+	m_call->AsynCallback(pDev->m_nCode, *pDev);
+
+	delete pDev;
+
 	return 0;
 }

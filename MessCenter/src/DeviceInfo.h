@@ -12,6 +12,7 @@ class DeviceInfo {
 public:
 	DeviceInfo();
 	virtual ~DeviceInfo();
+	int m_nCode;//the value equal the asyn fuction the first argument value
 	char m_szVid[5];//the vendor id
 	char m_szPid[5];//the product id
 	char m_szManFac[30];// the manufacturer
