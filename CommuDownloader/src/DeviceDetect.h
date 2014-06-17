@@ -10,7 +10,7 @@
 
 #include <stdio.h>
 #include <iostream>
-#include "AsynCall.h"
+#include "DeviceInfo.h"
 
 using std::string;
 
@@ -19,17 +19,21 @@ public:
 	DeviceDetect();
 	virtual ~DeviceDetect();
 
-	void plug_dev_detect(AsynCall* call);
+	void plug_dev_detect();
 
 private:
-	static const int UEVENT_BUFFER_SIZE = 2048;
+	static unsigned long m_lastAddTime;
+	static unsigned long m_lastChangeTime;
+	static unsigned long m_lastRemoveTime;
+	static unsigned long m_nUsbFileSize;
 
-	static AsynCall* m_call;
+	static const int UEVENT_BUFFER_SIZE = 2048;
 
 	static void* pthread_func_plug(void* ptr);
 	static void* pthread_func_call(void* ptr);
 	static int plug_opp_dev(char* usb_message, int nLen);
 	static void plug_opp_dev(string& strMessage, DeviceInfo* pDev);
+	static unsigned long get_file_size(const char *path);
 };
 
 #endif /* DEVICEINFO_H_ */

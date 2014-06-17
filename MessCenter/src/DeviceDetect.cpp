@@ -13,6 +13,10 @@
 #include "LogFile.h"
 #include "DeviceInfo.h"
 
+#define DEV_USB_FILE "/proc/bus/usb/devices"
+#define ROWSIZE 200
+
+
 //typedef unsigned long int pthread_t;
 
 AsynCall* DeviceDetect::m_call = NULL;
@@ -58,6 +62,91 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 	return 0;
 }
 
+int android_vendor_id(char* vendorId, int nlen)
+{
+	FILE *fp;
+	char szRow[ROWSIZE] = {0};
+	int bJump = 0;
+	if((fp = fopen(DEV_USB_FILE, "r")) == NULL)
+	{
+		printf("Can not open file:%s!\n", DEV_USB_FILE);
+	}
+	if(nlen < 4)
+		printf("Can not get the vendor id because of short length\n");
+	while(fgets(szRow, ROWSIZE, fp) != NULL )
+	{
+		if(szRow[0]=='\n' && bJump)
+		{
+			break;
+		}
+		else if(szRow[0] == 'P')
+		{
+			strncpy(vendorId, szRow+11, 4);
+		}
+		else if(szRow[0] == 'S')
+		{
+			char szManufacFlag[10] = { 0 };
+			char szProductFlag[10] = { 0 };
+			if(szRow[4] == 'M')
+			{
+				char *szManufac = szRow+4;
+				int nManufacLen = -1;
+				int j = 0;
+				while(szManufac++)
+				{
+					if(*szManufac!='=' && nManufacLen<0)
+						continue;
+					else if(*szManufac == '=')
+					{
+						++nManufacLen;
+						continue;
+					}
+					if(*szManufac!=' ' && *szManufac!='\n')
+					{
+						++nManufacLen;
+						szManufacFlag[j++] = *szManufac;
+					}
+					else
+						break;
+				}
+			}
+			else if(szRow[4] == 'P')
+			{
+				char *szProduc = szRow + 4;
+				int nProducLen = -1;
+				int j = 0;
+				while(szProduc++)
+				{
+					if(*szProduc!='=' && nProducLen<0)
+						continue;
+					else if(*szProduc == '=')
+					{
+						++nProducLen;
+						continue;
+					}
+					if(*szProduc!=' ' && *szProduc!='\n')
+					{
+						++nProducLen;
+						szProductFlag[j++] = *szProduc;
+					}
+					else
+						break;
+				}
+			}
+//			if(!strcmp(szManufacFlag, "") || !strcmp(szProductFlag, ""))
+//				printf("First--%s::%s--End\n", szManufacFlag, szProductFlag);
+			if(!strcmp(szManufacFlag, "Android") || !strcmp(szProductFlag, "Android"))
+			{
+				bJump = 1;
+			}
+		}
+	}
+	fclose(fp);
+	if(bJump)
+		return 1;
+	return 0;
+}
+
 int DeviceDetect::plug_opp_dev(char* usb_message, int nLen)
 {
 	char messFlag[10] = { 0 };
@@ -85,6 +174,25 @@ int DeviceDetect::plug_opp_dev(char* usb_message, int nLen)
 		return 6;//if remove the device,return 1
 	}
 	return 0;
+}
+
+void DeviceDetect::plug_opp_dev(string& strMessage, DeviceInfo* pDev)
+{
+	string::size_type pos = strMessage.find('@');
+	string szCode = strMessage.substr(0, pos);
+	if(!szCode.compare("add"))
+	{
+		pDev->m_nCode = 1;
+	}
+	else if(!szCode.compare("change"))
+	{
+		//pDev->m_nCode = 6;
+	}
+	else if(!szCode.compare("remove"))
+	{
+		pDev->m_nCode = 6;
+	}
+	pos = strMessage.find("usb");
 }
 
 void* DeviceDetect::pthread_func_call(void* ptr)
