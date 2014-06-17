@@ -17,6 +17,7 @@
 #include "LogFile.h"
 #include "DeviceDetect.h"
 #include "SqliteManager.h"
+#include "InterfaceFull.h"
 using namespace std;
 
 #define ADB_TCP_SERVER_PORT 7100
@@ -243,6 +244,7 @@ void extract_content_info(const char* content, char (*field)[MINSIZE], int count
 void parse_code(int code, char* szBuf, int cltFd)
 {
 	char buf[BUFSIZ] = { 0 }; //数据传送的缓冲区
+	char szPath[PATH_MAX] = { 0 };
 	if(code == SOCKET_CODE_UPGRADEBOX)
 	{
 	}
@@ -260,6 +262,18 @@ void parse_code(int code, char* szBuf, int cltFd)
 	}
 	else if(code == SOCKET_CODE_INSTALLAPK)
 	{
+		char coninfo[3][MINSIZE];
+		extract_content_info(szBuf, coninfo, 1);
+#ifdef DEBUG
+		char szLog[MINSIZE] = { 0 };
+		sprintf(szLog, "The content's %d fields value is:%s", 1,
+				coninfo[0]);
+		LogFile::write_sys_log(szLog, APP_ROOT_PATH);
+#endif
+		char szApkPath[PATH_MAX] = { 0 };
+		get_current_path(szPath, sizeof(szPath));
+		sprintf(szApkPath, "%s%s/%s", szPath, APK_DIR_NAME, coninfo[0]);
+		InterfaceFull::install_android_apk(szApkPath);
 	}
 	else if(code == SOCKET_CODE_GETAPKLIST)//get apk list
 	{
@@ -297,7 +311,6 @@ void parse_code(int code, char* szBuf, int cltFd)
 			global_sock_srv.send_socket_packs(buf, 9, cltFd);
 			return;
 		}
-		char szPath[PATH_MAX] = { 0 };
 		char szApkFullPath[PATH_MAX] = { 0 };
 		char szIcnFullPath[PATH_MAX] = { 0 };
 		get_current_path(szPath, sizeof(szPath));
@@ -306,7 +319,7 @@ void parse_code(int code, char* szBuf, int cltFd)
 		sprintf(szIcnFullPath, "%s%s/%s", szPath, APK_ICONDIR_NAME, coninfo[1]);
 		rename(szIcnPath, szIcnFullPath);
 		//if(!global_sql_mgr.insert_sqlite_table(APP_DBTABLE_APKINFO, sqltext))
-		if(true)
+		if(false)
 		{
 			remove(szApkFullPath);
 			remove(szIcnFullPath);
