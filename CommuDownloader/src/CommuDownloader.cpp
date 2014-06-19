@@ -13,26 +13,30 @@
 #include <netinet/in.h>
 #include <pthread.h>
 #include <limits.h>
+#include <dirent.h>
 #include "SocketSeal.h"
 #include "LogFile.h"
 #include "DeviceDetect.h"
-#include "SqliteManager.h"
+//#include "SqliteManager.h"
 #include "InterfaceFull.h"
 using namespace std;
 
 #define ADB_TCP_SERVER_PORT 7100
-#define APP_ROOT_PATH "/system/strongunion/"
+//#define APP_ROOT_PATH "/system/strongunion/"
 //#define APP_DATABASE_NAME "sqcommudb"
 #define APP_DATABASE_NAME "com"
 #define APP_DBTABLE_APKINFO "apkinfo"
 #define APK_ICONDIR_NAME "icon"
 #define APK_DIR_NAME "dir"
+#define APK_TEMP_PATH  "/data/local/tmp/strongunion/tmp"
 #define SOCKET_STATR_TOKEN "OK"
 #define SOCKET_RECVPACK_CONTENT	512
 #define SOCKET_SENDPACK_LENGH	512
 #define SOCKET_RECVPACK_LENGH	512
-#define ROWSIZE 200
-#define MINSIZE 100
+#define MAXSIZE  1024
+#define ROWSIZE  200
+#define MINSIZE  100
+#define TINYSIZE 10
 //#define SOCKET_UTF8_BUFFER 1024
 //#define SOCKET_BUFFER	   512
 
@@ -52,7 +56,7 @@ using namespace std;
 
 DeviceDetect global_detect;
 SocketSeal global_sock_srv;
-SqliteManager global_sql_mgr;
+//SqliteManager global_sql_mgr;
 int global_client_fd[10] = { 0 };
 
 typedef struct _SOCKCLIENTBUF
@@ -67,24 +71,24 @@ static void* pthread_func_recv(void*);
 static void* pthread_func_recv_parse(void*);
 void parse_code(int code, char* szBuf, int cltFd);
 
-int code_convert(char *from_charset,char *to_charset,char *inbuf,unsigned long int inlen,char *outbuf,unsigned long int outlen)
-{
-	iconv_t cd;
-	char **pin = &inbuf;
-	char **pout = &outbuf;
-
-	cd = iconv_open(to_charset,from_charset);
-	if (cd==0) return -1;
-	memset(outbuf,0,outlen);
-	if (iconv(cd,pin,&inlen,pout,&outlen)==-1) return -1;
-	iconv_close(cd);
-	return 0;
-}
-
-int g2u(char *inbuf,size_t inlen,char *outbuf,size_t outlen)
-{
-	return code_convert("gb2312","utf-8",inbuf,inlen,outbuf,outlen);
-}
+//int code_convert(char *from_charset,char *to_charset,char *inbuf,unsigned long int inlen,char *outbuf,unsigned long int outlen)
+//{
+//	iconv_t cd;
+//	char **pin = &inbuf;
+//	char **pout = &outbuf;
+//
+//	cd = iconv_open(to_charset,from_charset);
+//	if (cd==0) return -1;
+//	memset(outbuf,0,outlen);
+//	if (iconv(cd,pin,&inlen,pout,&outlen)==-1) return -1;
+//	iconv_close(cd);
+//	return 0;
+//}
+//
+//int g2u(char *inbuf,size_t inlen,char *outbuf,size_t outlen)
+//{
+//	return code_convert("gb2312","utf-8",inbuf,inlen,outbuf,outlen);
+//}
 
 void send_all_client_packs(char* buf, int size)
 {
@@ -138,16 +142,50 @@ bool is_file_exist(const char *path)
     }
 }
 
+int get_all_apk(char *path, char (*fileArr)[TINYSIZE])
+{
+	int 			 nCount = 0;
+	DIR              *pDir ;
+	struct dirent    *ent  ;
+	char              childpath[512];
+
+	pDir=opendir(path);
+	memset(childpath,0,sizeof(childpath));
+
+	while((ent=readdir(pDir))!=NULL)
+	{
+		if(ent->d_type & DT_DIR)
+		{
+			continue;
+			if(strcmp(ent->d_name,".")==0 || strcmp(ent->d_name,"..")==0)
+					continue;
+			sprintf(childpath,"%s/%s",path,ent->d_name);
+			printf("path:%s/n",childpath);
+			//listDir(childpath);
+		}
+		else
+		{
+			//cout<<ent->d_name<<endl;
+			strcpy(*fileArr, ent->d_name);
+			//printf("Addr:%x\n", (*fileArr));
+			//printf("String:%s\n", *fileArr);
+			fileArr++;
+			nCount++;
+		}
+	}
+	return nCount;
+}
+
 int main() {
 	//cout << "!!!Hello World!!!" << endl; // prints !!!Hello World!!!
 	char szPath[ROWSIZE] = { 0 };
 	get_current_path(szPath, sizeof(szPath));
 	sprintf(szPath, "%s%s", szPath, APP_DATABASE_NAME);
-	global_sql_mgr.open_sqlite_db(szPath);
+	//global_sql_mgr.open_sqlite_db(szPath);
 //	global_sql_mgr.create_sqlite_table(APP_DBTABLE_APKINFO, "apkid INTEGER, name VARCHAR(50),"
 //			"mode INTEGER, vername VARCHAR(20), pkgname VARCHAR(50), filesize REAL,"
 //			"iconpath VARCHAR(20)");
-	global_sql_mgr.create_sqlite_table(APP_DBTABLE_APKINFO, "apkid INTEGER, name VARCHAR(50)");
+	//global_sql_mgr.create_sqlite_table(APP_DBTABLE_APKINFO, "apkid INTEGER, name VARCHAR(50)");
 	global_detect.plug_dev_detect();
 	global_sock_srv.start_server_socket(ADB_TCP_SERVER_PORT);
 	//wait for the client to connect
@@ -165,7 +203,7 @@ int main() {
 		if (sockClt != 0)
 		{
 			pthread_t pt_recv = 0;
-			void* pBuffer = NULL;
+			//void* pBuffer = NULL;
 			global_sock_srv.send_socket_packs(buf, len+8, sockClt);
 			add_client_fd(sockClt);
 			//global_sock_srv.receive_socket_packs(buf, BUFSIZ, sockClt);
@@ -176,7 +214,7 @@ int main() {
 		}
 	}
 	//global_sock_srv.close_server_socket();
-	global_sql_mgr.close_sqlite_db();
+	//global_sql_mgr.close_sqlite_db();
 	return 0;
 }
 
@@ -194,6 +232,11 @@ static void* pthread_func_recv(void* pSockClt)
 	{
 		global_sock_srv.close_client_socket(sockClt);
 		remove_client_fd(sockClt);
+#ifdef DEBUG
+		char szLog[MINSIZE] = { 0 };
+		sprintf(szLog, "%s:%d", "close client socket!", sockClt);
+		LogFile::write_sys_log(szLog);
+#endif
 		return NULL;
 	}
 	int bufferSize = ntohl((int)*(int*)pBuffer);
@@ -216,9 +259,9 @@ static void* pthread_func_recv_parse(void* pSckCltBuf)
 //	char szContent[SOCKET_RECVPACK_CONTENT] = { 0 };
 //	memcpy(szContent, pBuf+8, len-8);
 	unsigned int len = ntohl(*(int*)pscb->pBuf);
-	unsigned int code = ntohl(*(int*)(pscb->pBuf+4));
+	unsigned int code = ntohl(*(int*)((unsigned char*)pscb->pBuf+4));
 	char szContent[SOCKET_RECVPACK_CONTENT] = { 0 };
-	memcpy(szContent, pscb->pBuf+8, len-8);
+	memcpy(szContent, (unsigned char*)pscb->pBuf+8, len-8);
 	parse_code(code, szContent, pscb->clientFd);
 	free(pscb->pBuf);
 	delete pscb;
@@ -241,6 +284,68 @@ void extract_content_info(const char* content, char (*field)[MINSIZE], int count
 	strcpy((char*)field, tmp);
 }
 
+int grap_pack(void* buf, int nCode, const char* content)
+{
+	int nLen = strlen(content);
+	*(int*)(buf+4) = htonl(nCode);
+	if(nLen > 0)
+	{
+		memcpy(buf+8, content, nLen);
+		*(int*)buf = 8+nLen;
+#ifdef DEBUG
+		char szLog[MINSIZE] = { 0 };
+		sprintf(szLog, "The send package is:%d %d %s", 8+nLen,
+				nCode, content);
+		LogFile::write_sys_log(szLog);
+#endif
+		return nLen+8;
+	}
+	else
+	{
+		*(int*)buf = htonl(8);
+#ifdef DEBUG
+		char szLog[MINSIZE] = { 0 };
+		sprintf(szLog, "The send package is:%d %d", 8+nLen,
+				nCode);
+		LogFile::write_sys_log(szLog);
+#endif
+		return 8;
+	}
+}
+
+int execstream(const char *cmdstring, char *buf, int size)
+{
+	FILE* stream;
+	stream = popen(cmdstring, "r");
+	if(NULL == stream)
+	{
+		LogFile::write_sys_log("execute adb command failed!");
+		strcpy(buf, "failed");
+		return 1;
+	}
+	else
+	{
+		while(NULL != fgets(buf, size, stream))
+		{
+		}
+		pclose(stream);
+		return 0;
+	}
+}
+
+void trim(char* str, char trimstr=' ')
+{
+	char* szTmp = str;
+	while(*szTmp == ' ')
+		szTmp++;
+	strcpy(str, szTmp);
+	int len = strlen(str);
+	szTmp = str + len -1;
+	while(*szTmp==' ' || *szTmp=='\n')
+		szTmp--;
+	*(szTmp+1) = '\0';
+}
+
 void parse_code(int code, char* szBuf, int cltFd)
 {
 	char buf[BUFSIZ] = { 0 }; //数据传送的缓冲区
@@ -257,7 +362,7 @@ void parse_code(int code, char* szBuf, int cltFd)
 	else if(code == SOCKET_CODE_STOPBOX)
 	{
 	}
-	else if(code == SOCKET_CODE_UNINSTALLAPK)
+	else if(code == SOCKET_CODE_UNINSTALLAPK)//delete the instruction
 	{
 	}
 	else if(code == SOCKET_CODE_INSTALLAPK)
@@ -268,7 +373,7 @@ void parse_code(int code, char* szBuf, int cltFd)
 		char szLog[MINSIZE] = { 0 };
 		sprintf(szLog, "The content's %d fields value is:%s", 1,
 				coninfo[0]);
-		LogFile::write_sys_log(szLog, APP_ROOT_PATH);
+		LogFile::write_sys_log(szLog);
 #endif
 		char szApkPath[PATH_MAX] = { 0 };
 		get_current_path(szPath, sizeof(szPath));
@@ -277,69 +382,185 @@ void parse_code(int code, char* szBuf, int cltFd)
 	}
 	else if(code == SOCKET_CODE_GETAPKLIST)//get apk list
 	{
-
-	}
-	else if(code == SOCKET_CODE_CHNBOXAPK)
-	{
+		char szApkBuf[MAXSIZE];
+		char apklist[200][TINYSIZE];
+		int count = get_all_apk(APK_TEMP_PATH, apklist);
+		memset(szApkBuf, 0, sizeof(szApkBuf));
+		strcpy(szApkBuf, apklist[0]);
+		int i;
+		for(i=1; i<count; i++)
+		{
+			strcat(szApkBuf, "_");
+			strcat(szApkBuf, apklist[i]);
+		}
+		int len = grap_pack(buf, SOCKET_CODE_GETAPKLIST, szApkBuf);
+		global_sock_srv.send_socket_packs(buf, len, cltFd);
 	}
 	else if(code == SOCKET_CODE_DELBOXAPK)
 	{
+		char coninfo[3][MINSIZE];
+		extract_content_info(szBuf, coninfo, 3);
+#ifdef DEBUG
+		char szLog[MINSIZE] = { 0 };
+		sprintf(szLog, "The code is:%d,The content's %d fields value is:%s %s %s", SOCKET_CODE_DELBOXAPK, 3,
+				coninfo[0], coninfo[1], coninfo[2]);
+		LogFile::write_sys_log(szLog);
+#endif
+		get_current_path(szPath, sizeof(szPath));
+		sprintf(szPath, "%s%s/%s", szPath, APK_DIR_NAME, coninfo[0]);
+		int nLen = 0;
+		if(!remove(szPath))
+			nLen = grap_pack(buf, SOCKET_CODE_DELBOXAPK, "1");
+		else
+			nLen = grap_pack(buf, SOCKET_CODE_DELBOXAPK, "2");
+		global_sock_srv.send_socket_packs(buf, nLen, cltFd);
 	}
-	else if(code == SOCKET_CODE_ADDBOXAPK)
+	else if(code == SOCKET_CODE_ADDBOXAPK || code == SOCKET_CODE_CHNBOXAPK)
 	{
-		char sqltext[ROWSIZE] = { 0 };
+		//char sqltext[ROWSIZE] = { 0 };
 		//char coninfo[4][MINSIZE];
 		//extract_content_info(szBuf, coninfo, 4);
 		char coninfo[3][MINSIZE];
 		extract_content_info(szBuf, coninfo, 3);
-		sprintf(sqltext, "%s, '%s'", coninfo[1], coninfo[2]);
+		//sprintf(sqltext, "%s, '%s'", coninfo[0], coninfo[1]);
 #ifdef DEBUG
 		char szLog[MINSIZE] = { 0 };
-		sprintf(szLog, "The content's %d fields value is:%s %s %s", 3,
+		sprintf(szLog, "The code is:%d,The content's %d fields value is:%s %s %s", SOCKET_CODE_ADDBOXAPK, 3,
 				coninfo[0], coninfo[1], coninfo[2]);
-		LogFile::write_sys_log(szLog, APP_ROOT_PATH);
+		LogFile::write_sys_log(szLog);
 #endif
 		char szApkPath[PATH_MAX] = { 0 };
-		char szIcnPath[PATH_MAX] = { 0 };
-		sprintf(szApkPath, "%s/%s", coninfo[0], coninfo[1]);
-		sprintf(szIcnPath, "%s/%s/%s", coninfo[0], APK_ICONDIR_NAME, coninfo[1]);
-		if(!is_file_exist(szApkPath) || !is_file_exist(szIcnPath))
+		sprintf(szApkPath, "%s/%s", APK_TEMP_PATH, coninfo[0]);
+		if(!is_file_exist(szApkPath))
 		{
-			*(int*)buf = htonl(9);
-			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
-			*(char*)(buf+8) = '2';
-			global_sock_srv.send_socket_packs(buf, 9, cltFd);
+//			*(int*)buf = htonl(9);
+//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
+//			*(char*)(buf+8) = '2';
+//			global_sock_srv.send_socket_packs(buf, 9, cltFd);
+			int nLen = grap_pack(buf, SOCKET_CODE_ADDBOXAPK, "2");
+			global_sock_srv.send_socket_packs(buf, nLen, cltFd);
 			return;
 		}
 		char szApkFullPath[PATH_MAX] = { 0 };
-		char szIcnFullPath[PATH_MAX] = { 0 };
 		get_current_path(szPath, sizeof(szPath));
 		sprintf(szApkFullPath, "%s%s/%s", szPath, APK_DIR_NAME, coninfo[1]);
 		rename(szApkPath, szApkFullPath);
-		sprintf(szIcnFullPath, "%s%s/%s", szPath, APK_ICONDIR_NAME, coninfo[1]);
-		rename(szIcnPath, szIcnFullPath);
 		//if(!global_sql_mgr.insert_sqlite_table(APP_DBTABLE_APKINFO, sqltext))
 		if(false)
 		{
 			remove(szApkFullPath);
-			remove(szIcnFullPath);
-			*(int*)buf = htonl(9);
-			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
-			*(char*)(buf+8) = '2';
-			global_sock_srv.send_socket_packs(buf, 9, cltFd);
+//			*(int*)buf = htonl(9);
+//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
+//			*(char*)(buf+8) = '2';
+//			global_sock_srv.send_socket_packs(buf, 9, cltFd);
+			int nLen = grap_pack(buf, SOCKET_CODE_ADDBOXAPK, "2");
+			global_sock_srv.send_socket_packs(buf, nLen, cltFd);
 		}
 		else
 		{
-			*(int*)buf = htonl(9);
-			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
-			*(char*)(buf+8) = '1';
-			global_sock_srv.send_socket_packs(buf, 9, cltFd);
+//			*(int*)buf = htonl(9);
+//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
+//			*(char*)(buf+8) = '1';
+//			global_sock_srv.send_socket_packs(buf, 9, cltFd);
+			int nLen = grap_pack(buf, SOCKET_CODE_ADDBOXAPK, "1");
+			global_sock_srv.send_socket_packs(buf, nLen, cltFd);
 		}
 	}
 	else if(code == SOCKET_CODE_GETBOXINFO)
 	{
+		char szCmdString[MINSIZE] = { 0 };
+		char szCmdResult[MINSIZE] = { 0 };
+		char szContent[ROWSIZE] = { 0 };
+		char szTemp[ROWSIZE] = { 0 };
+		char* szTmp = NULL;
+		int len = 0;
+		//get the sdk version
+		strcpy(szCmdString, "cat /system/build.prop | grep \"ro.build.version.sdk\"");
+		execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+		if(szCmdResult[0] != '\0')
+		{
+			szTmp = strstr(szCmdResult, "=");
+			strcpy(szCmdResult, szTmp+1);
+			len = strlen(szCmdResult);
+			if(szCmdResult[len-1] == '\n')
+				szCmdResult[len-1] = '_';
+			else
+			{
+				szCmdResult[len] = '_';
+				len++;
+			}
+			strcat(szContent, szCmdResult);
+		}
+		else
+		{
+			strcat(szContent, " _");
+		}
+		//get the rom version
+		memset(szCmdResult, 0, sizeof(szCmdResult));
+		strcpy(szCmdString, "cat /system/build.prop | grep \"ro.build.version.release\"");
+		execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+		if(szCmdResult[0] != '\0')
+		{
+			szTmp = strstr(szCmdResult, "=");
+			strcpy(szTemp, szTmp+1);
+			strcpy(szCmdResult, szTemp);
+			len = strlen(szCmdResult);
+			if(szCmdResult[len-1] == '\n')
+				szCmdResult[len-1] = '_';
+			else
+			{
+				szCmdResult[len] = '_';
+				len++;
+			}
+			strcat(szContent, szCmdResult);
+		}
+		else
+		{
+			strcat(szContent, " _");
+		}
+		//get the memory space
+		memset(szCmdResult, 0, sizeof(szCmdResult));
+		strcpy(szCmdString, "cat /proc/meminfo | grep \"MemTotal\"");
+		execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+		if(szCmdResult[0] != '\0')
+		{
+			szTmp = strstr(szCmdResult, ":");
+			strcpy(szTemp, szTmp+1);
+			strcpy(szCmdResult, szTemp);
+			trim(szCmdResult);
+			szTmp = strstr(szCmdResult, " ");
+			*szTmp = '\0';
+			unsigned long space = atol(szCmdResult) / 1000;
+			sprintf(szContent, "%s%ld_", szContent, space);
+		}
+		else
+		{
+			strcat(szContent, " _");
+		}
+		//get the cpu frequence
+		memset(szCmdResult, 0, sizeof(szCmdResult));
+		strcpy(szCmdString, "cat /proc/cpuinfo | grep \"BogoMIPS\"");
+		execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+		if(szCmdResult[0] != '\0')
+		{
+			szTmp = strstr(szCmdResult, ":");
+			strcpy(szTemp, szTmp+1);
+			strcpy(szCmdResult, szTemp);
+			trim(szCmdResult);
+			szTmp = strstr(szCmdResult, " ");
+			*szTmp = '\0';
+			float speed = atol(szCmdResult) / 1000;
+			sprintf(szContent, "%s%.3f", szContent, speed);
+		}
+		else
+		{
+			sprintf(szContent, "%s%s", szContent, " ");
+		}
+
+		int nLen = grap_pack(buf, SOCKET_CODE_GETBOXINFO, szContent);
+		global_sock_srv.send_socket_packs(buf, nLen, cltFd);
 	}
-	else if(code == SOCKET_CODE_GETWORKMODE)
+	else if(code == SOCKET_CODE_GETWORKMODE)//delete the instruction
 	{
 	}
 }

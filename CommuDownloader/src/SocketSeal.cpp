@@ -16,7 +16,7 @@
 #include <arpa/inet.h>
 #include "LogFile.h"
 
-#define APP_ROOT_PATH "/system/strongunion/"
+//#define APP_ROOT_PATH "/system/strongunion/"
 #define RCVSIZE   512
 
 SocketSeal::SocketSeal()
@@ -50,7 +50,7 @@ void SocketSeal::start_server_socket(int nConnPort)
 	{
 		perror("socket");
 #ifdef DEBUG
-		LogFile::write_sys_log("create server socket failed!", APP_ROOT_PATH);
+		LogFile::write_sys_log("create server socket failed!");
 #endif
 		return;
 	}
@@ -61,7 +61,7 @@ void SocketSeal::start_server_socket(int nConnPort)
 #ifdef DEBUG
         char szLog[100];
         sprintf(szLog, "server bind port:%d failed!", nConnPort);
-		LogFile::write_sys_log(szLog, APP_ROOT_PATH);
+		LogFile::write_sys_log(szLog);
 #endif
         return;
     }
@@ -70,7 +70,7 @@ void SocketSeal::start_server_socket(int nConnPort)
     {
         printf("Server Listen Failed!");
 #ifdef DEBUG
-		LogFile::write_sys_log("server listen failed!", APP_ROOT_PATH);
+		LogFile::write_sys_log("server listen failed!");
 #endif
         return;
     }
@@ -87,7 +87,7 @@ int SocketSeal::accept_client_socket()
 	{
 		perror("accept");
 #ifdef DEBUG
-		LogFile::write_sys_log("accept client socket failed!", APP_ROOT_PATH);
+		LogFile::write_sys_log("accept client socket failed!");
 #endif
 		return 0;
 	}
@@ -125,7 +125,7 @@ int SocketSeal::receive_buffer(int nClientSockfd, void** pBuf)
 #ifdef DEBUG
 		char szLog[100] = { 0 };
 		sprintf(szLog, "<receive_buffer>File Size:%d", fileSize);
-		LogFile::write_sys_log(szLog, APP_ROOT_PATH);
+		LogFile::write_sys_log(szLog);
 #endif
 	}
 	memcpy(*pBuf+nRec, buf, len);
@@ -133,7 +133,7 @@ int SocketSeal::receive_buffer(int nClientSockfd, void** pBuf)
 #ifdef DEBUG
 		char szLog[100] = { 0 };
 		sprintf(szLog, "<receive_buffer>File Receive Current Length:%d", nRec);
-		LogFile::write_sys_log(szLog, APP_ROOT_PATH);
+		LogFile::write_sys_log(szLog);
 #endif
 	if(nRec >= fileSize)
 	{

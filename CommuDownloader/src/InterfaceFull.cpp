@@ -17,10 +17,11 @@
 
 #define MAXSIZE 1024
 #define ROWSIZE 200
-#define APK_DIR_NAME "apkdir"
+//#define APK_DIR_NAME "apkdir"
 #define ADB_ADB_NAME "adb"
-#define APP_ROOT_PATH "/system/strongunion/"
+//#define APP_ROOT_PATH "/system/strongunion/"
 
+char* get_current_path();
 
 InterfaceFull::InterfaceFull() {
 	// TODO Auto-generated constructor stub
@@ -39,7 +40,7 @@ int InterfaceFull::install_android_apk(char* szApk)
 	//sprintf(szPath, "%s", APP_ROOT_PATH);
 	//sprintf(szApkPath, "%s%s/%s", szPath, APK_DIR_NAME, szApk);
 	char szAdbPath[PATH_MAX] = { 0 };
-	sprintf(szAdbPath, "%s%s", APP_ROOT_PATH, ADB_ADB_NAME);
+	sprintf(szAdbPath, "%s%s", get_current_path(), ADB_ADB_NAME);
 	strcpy(szApkPath, szApk);
 //	sprintf(shellComm, "%s kill-server", ADB_ADB_NAME);
 //
@@ -79,9 +80,9 @@ int InterfaceFull::install_android_apk(char* szApk)
 	char szInfo[MAXSIZE] = { 0 };
 	//sprintf(shellComm, "%s install -r %s", ADB_ADB_NAME, szApkPath);
 	sprintf(shellComm, "%s install -r %s", szAdbPath, szApkPath);
-	LogFile::write_sys_log(shellComm, APP_ROOT_PATH);
+	LogFile::write_sys_log(shellComm);
 	execstream(shellComm, szInfo, sizeof(szInfo));
-	LogFile::write_sys_log(szInfo, APP_ROOT_PATH);
+	LogFile::write_sys_log(szInfo);
 	//systemdroid("exit");
 	return 0;
 }
@@ -141,7 +142,7 @@ int InterfaceFull::execstream(const char *cmdstring, char *buf, int size)
 	stream = popen(cmdstring, "r");
 	if(NULL == stream)
 	{
-		LogFile::write_sys_log("execute adb command failed!", APP_ROOT_PATH);
+		LogFile::write_sys_log("execute adb command failed!");
 		strcpy(buf, "failed");
 		return 1;
 	}

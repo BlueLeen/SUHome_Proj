@@ -9,7 +9,7 @@
 #include "LogFile.h"
 #include <stdio.h>
 
-#define APP_ROOT_PATH "/system/strongunion/"
+//#define APP_ROOT_PATH "/system/strongunion/"
 
 SqliteManager::SqliteManager():m_sqdb(NULL) {
 	// TODO Auto-generated constructor stub
@@ -35,7 +35,7 @@ bool SqliteManager::open_sqlite_db(char *dbname)
 #ifdef DEBUG
     	char szLog[100] = { 0 };
     	sprintf(szLog, "Can't open database: %s\n", sqlite3_errmsg(m_sqdb));
-    	LogFile::write_sys_log(szLog, APP_ROOT_PATH);
+    	LogFile::write_sys_log(szLog);
 #endif
 		sqlite3_close(m_sqdb);
 		return false;
@@ -56,7 +56,7 @@ bool SqliteManager::create_sqlite_table(char *tablename,char *SQL)
 		//fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(m_sqdb));
     	char szLog[100] = { 0 };
     	sprintf(szLog, "Can't create table: %s\n", errmsg);
-    	LogFile::write_sys_log(szLog, APP_ROOT_PATH);
+    	LogFile::write_sys_log(szLog);
 #endif
     	return false;
     }
@@ -75,7 +75,7 @@ bool SqliteManager::insert_sqlite_table(char *tablename,char *str)
 		//fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(m_sqdb));
     	char szLog[100] = { 0 };
     	sprintf(szLog, "Can't insert table: %s\n", errmsg);
-    	LogFile::write_sys_log(szLog, APP_ROOT_PATH);
+    	LogFile::write_sys_log(szLog);
 #endif
     	return false;
     }
@@ -98,7 +98,7 @@ bool SqliteManager::query_sqlite_table(char *tablename)
 
     	char szLog[100] = { 0 };
     	sprintf(szLog, "Can't query table: %s\n", errmsg);
-    	LogFile::write_sys_log(szLog, APP_ROOT_PATH);
+    	LogFile::write_sys_log(szLog);
 #endif
     	return false;
     }

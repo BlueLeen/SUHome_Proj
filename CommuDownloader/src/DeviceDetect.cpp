@@ -13,12 +13,13 @@
 #include <sys/wait.h>
 #include <sys/time.h>
 #include <errno.h>
+#include <limits.h>
 //#include <sys/stat.h>
 #include "PlugEvent.h"
 #include "LogFile.h"
 #include "SocketSeal.h"
 
-#define APP_ROOT_PATH "/system/strongunion/"
+//#define APP_ROOT_PATH "/system/strongunion/"
 #define DEV_USB_DEV "/proc/bus/usb/devices"
 #define DEV_USB_FILE "usbinfo"
 //#define DEV_USB_FILE "/home/leen/Desktop/new"
@@ -89,11 +90,40 @@ char* get_current_path(char* szPath, int nLen)
 	return szPath;
 }
 
+char* get_current_path()
+{
+	static char szPath[PATH_MAX] = { 0 };
+	int cnt = readlink("/proc/self/exe", szPath, PATH_MAX);
+	if(cnt<0 || cnt>=PATH_MAX)
+	{
+		printf("Error:Get current directory!\n");
+		return NULL;
+	}
+	int i;
+	for(i=cnt; i>=0; --i)
+	{
+		if(szPath[i] == '/')
+		{
+			szPath[i+1] = '\0';
+			break;
+		}
+	}
+	return szPath;
+}
+
+char* get_temp_path()
+{
+	static char szPath[ROWSIZE] = { 0 };
+	sprintf(szPath, "/data/local/tmp/");
+	return szPath;
+}
+
 unsigned long DeviceDetect::get_file_size(const char *path)
 {
-	char szPath[ROWSIZE] = { 0 };
+	//char szPath[ROWSIZE] = { 0 };
 	char szcmd[ROWSIZE] = { 0 };
-	get_current_path(szPath, sizeof(szPath));
+	//get_current_path(szPath, sizeof(szPath));
+	char* szPath = get_temp_path();
 	sprintf(szPath, "%s%s", szPath, DEV_USB_FILE);
 	sprintf(szcmd, "cat %s > %s", DEV_USB_DEV, szPath);
 	systemdroid(szcmd);
@@ -128,7 +158,7 @@ void read_file_pos(char* buf, const char *path, long int pos = 0)
 	char szcmd[ROWSIZE] = { 0 };
 	sprintf(szcmd, "cat %s > %s", DEV_USB_DEV, path);
 	systemdroid(szcmd);
-	unsigned long filesize = -1;
+	long int filesize = -1;
     FILE *fp;
     fp = fopen(path, "r");
     if(fp == NULL)
@@ -143,7 +173,7 @@ void read_file_pos(char* buf, const char *path, long int pos = 0)
     fseek(fp, pos, SEEK_SET);
     fread(buf, filesize-pos, 1, fp);
 #ifdef DEBUG
-    LogFile::write_sys_log(buf, APP_ROOT_PATH);
+    LogFile::write_sys_log(buf);
 #endif
     fclose(fp);
 }
@@ -200,7 +230,7 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 					m_lastAddTime = curTime;
 					pthread_create(&pt_recv, NULL, pthread_func_call, (void*)nState);
 #ifdef DEBUG
-					LogFile::write_sys_log(buf, APP_ROOT_PATH);
+					LogFile::write_sys_log(buf);
 #endif
 				}
 			}
@@ -212,7 +242,7 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 					m_lastChangeTime = curTime;
 					pthread_create(&pt_recv, NULL, pthread_func_call, (void*)nState);
 #ifdef DEBUG
-					LogFile::write_sys_log(buf, APP_ROOT_PATH);
+					LogFile::write_sys_log(buf);
 #endif
 				}
 			}
@@ -224,7 +254,7 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 					m_lastRemoveTime = curTime;
 					pthread_create(&pt_recv, NULL, pthread_func_call, (void*)nState);
 #ifdef DEBUG
-					LogFile::write_sys_log(buf, APP_ROOT_PATH);
+					LogFile::write_sys_log(buf);
 #endif
 				}
 			}
@@ -290,9 +320,10 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 	if(nState == 1)
 	{
 		DeviceInfo devinfo;
-		char szPath[ROWSIZE] = { 0 };
+		//char szPath[ROWSIZE] = { 0 };
 		char buf[MAXSIZE] = { 0 };
-		get_current_path(szPath, sizeof(szPath));
+		//get_current_path(szPath, sizeof(szPath));
+		char* szPath = get_temp_path();
 		sprintf(szPath, "%s%s", szPath, DEV_USB_FILE);
 		read_file_pos(buf, szPath, DeviceDetect::m_nUsbFileSize);
 		devinfo.get_dev_info(buf);
