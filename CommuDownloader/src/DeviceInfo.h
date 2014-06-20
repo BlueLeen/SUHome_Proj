@@ -13,6 +13,7 @@ public:
 	DeviceInfo();
 	virtual ~DeviceInfo();
 	void get_dev_info(char* buf);
+	void get_dev_info(char* buf, const char* path);
 	int m_nCode;//the value equal the asyn fuction the first argument value
 	char m_szVid[5];//the vendor id
 	char m_szPid[5];//the product id

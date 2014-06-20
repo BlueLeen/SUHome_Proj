@@ -14,6 +14,7 @@ public:
 	virtual ~InterfaceFull();
 
 	static int install_android_apk(char* szApk);
+	static void open_android_usbdebug();
 private:
 	static int phone_is_online(char* buf);
 	static int systemdroid(const char * cmdstring);

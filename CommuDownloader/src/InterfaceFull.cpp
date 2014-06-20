@@ -20,6 +20,7 @@
 //#define APK_DIR_NAME "apkdir"
 #define ADB_ADB_NAME "adb"
 //#define APP_ROOT_PATH "/system/strongunion/"
+#define APK_TEMP_PATH  "/data/local/tmp/strongunion/tmp"
 
 char* get_current_path();
 
@@ -30,6 +31,51 @@ InterfaceFull::InterfaceFull() {
 
 InterfaceFull::~InterfaceFull() {
 	// TODO Auto-generated destructor stub
+}
+
+void InterfaceFull::open_android_usbdebug()
+{
+	//bool bExit = false;
+	char shellComm[MAXSIZE] = { 0 };
+	char shellCommDevice[MAXSIZE] = { 0 };
+	char szAdbPath[PATH_MAX] = { 0 };
+	char szInfo[MAXSIZE] = { 0 };
+	char szFile[MAXSIZE] = { 0 };
+	sprintf(szAdbPath, "%s%s", get_current_path(), ADB_ADB_NAME);
+	sprintf(shellComm, "%s kill-server", szAdbPath);
+	//sprintf(shellCommDevice, "%s devices", szAdbPath);
+	sprintf(szFile, "%s/%s", APK_TEMP_PATH, "text");
+	sprintf(shellCommDevice, "%s devices > %s", szAdbPath, szFile);
+//	while(!bExit)
+//	{
+//		systemdroid(shellComm);
+//		execstream(shellCommDevice, szInfo, sizeof(szInfo));
+//		bExit = phone_is_online(szInfo);
+//	}
+	while(systemdroid(shellComm)==0)
+	{
+		FILE *fpin;
+		char line[ROWSIZE] = { 0 };
+		char line_last[ROWSIZE] = { 0 };
+		execstream(shellCommDevice, szInfo, sizeof(szInfo));
+		LogFile::write_sys_log(szInfo);
+		LogFile::write_sys_log(shellCommDevice);
+		{
+			fpin = fopen(szFile, "r");
+			while(fgets(line, ROWSIZE, fpin) != NULL)
+			{
+				LogFile::write_sys_log(line);
+				if(!strcmp(line, "\n")) continue;
+				strcpy(line_last, line);
+			}
+			if(strcmp(line_last, "") && phone_is_online(line_last))
+			{
+				fclose(fpin);
+				break;
+			}
+			fclose(fpin);
+		}
+	}
 }
 
 int InterfaceFull::install_android_apk(char* szApk)
@@ -81,10 +127,10 @@ int InterfaceFull::install_android_apk(char* szApk)
 	//sprintf(shellComm, "%s install -r %s", ADB_ADB_NAME, szApkPath);
 	sprintf(shellComm, "%s install -r %s", szAdbPath, szApkPath);
 	LogFile::write_sys_log(shellComm);
-	execstream(shellComm, szInfo, sizeof(szInfo));
+	int result = execstream(shellComm, szInfo, sizeof(szInfo));
 	LogFile::write_sys_log(szInfo);
 	//systemdroid("exit");
-	return 0;
+	return result;
 }
 
 int InterfaceFull::phone_is_online(char* buf)

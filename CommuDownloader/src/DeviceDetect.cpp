@@ -18,6 +18,7 @@
 #include "PlugEvent.h"
 #include "LogFile.h"
 #include "SocketSeal.h"
+#include "InterfaceFull.h"
 
 //#define APP_ROOT_PATH "/system/strongunion/"
 #define DEV_USB_DEV "/proc/bus/usb/devices"
@@ -31,8 +32,10 @@
 #define SOCKET_CODE_BOXPROBLEM  	 			 103
 #define SOCKET_CODE_BOXWELL  	     			 104
 #define SOCKET_CODE_PHONENOTRECOGNIZED  	     105
+#define SOCKET_CODE_PHONEOPENUSBDEBUG  	     	 107
 
 extern void send_all_client_packs(char* buf, int size);
+extern int grap_pack(void* buf, int nCode, const char* content);
 
 // 返回自系统开机以来的毫秒数（tick）
 unsigned long GetTickCount()
@@ -118,26 +121,6 @@ char* get_temp_path()
 	return szPath;
 }
 
-unsigned long DeviceDetect::get_file_size(const char *path)
-{
-	//char szPath[ROWSIZE] = { 0 };
-	char szcmd[ROWSIZE] = { 0 };
-	//get_current_path(szPath, sizeof(szPath));
-	char* szPath = get_temp_path();
-	sprintf(szPath, "%s%s", szPath, DEV_USB_FILE);
-	sprintf(szcmd, "cat %s > %s", DEV_USB_DEV, szPath);
-	systemdroid(szcmd);
-    unsigned long filesize = -1;
-    FILE *fp;
-    fp = fopen(szPath, "r");
-    if(fp == NULL)
-        return filesize;
-    fseek(fp, 0L, SEEK_END);
-    filesize = ftell(fp);
-    fclose(fp);
-    return filesize;
-}
-
 //unsigned long get_file_size(const char *path)
 //{
 //    unsigned long filesize = -1;
@@ -153,7 +136,52 @@ unsigned long DeviceDetect::get_file_size(const char *path)
 //    return filesize;
 //}
 
-void read_file_pos(char* buf, const char *path, long int pos = 0)
+bool DeviceDetect::m_bGetDeviceFileMethod = false;
+
+//typedef unsigned long int pthread_t;
+unsigned long DeviceDetect::m_nUsbFileSize = 0;
+unsigned long DeviceDetect::m_lastAddTime = 0;
+unsigned long DeviceDetect::m_lastChangeTime = 0;
+unsigned long DeviceDetect::m_lastRemoveTime = 0;
+char DeviceDetect::m_szAddTextPath[PATH_MAX] = { 0 };
+
+
+DeviceDetect::DeviceDetect() {
+	// TODO Auto-generated constructor stub
+
+}
+
+DeviceDetect::~DeviceDetect() {
+	// TODO Auto-generated destructor stub
+}
+
+unsigned long DeviceDetect::get_file_size(const char *path)
+{
+	//char szPath[ROWSIZE] = { 0 };
+	//get_current_path(szPath, sizeof(szPath));
+	if(m_bGetDeviceFileMethod)
+	{
+		char szcmd[ROWSIZE] = { 0 };
+		char szTmpPath[PATH_MAX] = { 0 };
+		char* szPath = get_temp_path();
+		sprintf(szTmpPath, "%s%s", szPath, DEV_USB_FILE);
+		sprintf(szcmd, "cat %s > %s", DEV_USB_DEV, szTmpPath);
+		systemdroid(szcmd);
+	    unsigned long filesize = -1;
+	    FILE *fp;
+	    fp = fopen(szTmpPath, "r");
+	    if(fp == NULL)
+	        return filesize;
+	    fseek(fp, 0L, SEEK_END);
+	    filesize = ftell(fp);
+	    fclose(fp);
+	    return filesize;
+	}
+	else
+		return 0;
+}
+
+void DeviceDetect::read_file_pos(char* buf, const char *path, long int pos)
 {
 	char szcmd[ROWSIZE] = { 0 };
 	sprintf(szcmd, "cat %s > %s", DEV_USB_DEV, path);
@@ -178,22 +206,6 @@ void read_file_pos(char* buf, const char *path, long int pos = 0)
     fclose(fp);
 }
 
-//typedef unsigned long int pthread_t;
-unsigned long DeviceDetect::m_nUsbFileSize = 0;
-unsigned long DeviceDetect::m_lastAddTime = 0;
-unsigned long DeviceDetect::m_lastChangeTime = 0;
-unsigned long DeviceDetect::m_lastRemoveTime = 0;
-
-
-DeviceDetect::DeviceDetect() {
-	// TODO Auto-generated constructor stub
-
-}
-
-DeviceDetect::~DeviceDetect() {
-	// TODO Auto-generated destructor stub
-}
-
 void DeviceDetect::plug_dev_detect() {
 	pthread_t pt_plug = 0;
 	DeviceDetect::m_lastAddTime = GetTickCount();
@@ -208,10 +220,11 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 
 	DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
 
+	PlugEvent event;
+
 	while(1)
 	{
 		/* Netlink message buffer */
-		PlugEvent event;
 		int recvlen = 0;
 		char buf[UEVENT_BUFFER_SIZE] = {0};
 		recvlen = event.recv_hotplug_sock(buf, sizeof(buf));
@@ -228,6 +241,11 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 				if(curTime - m_lastAddTime > 2000)
 				{
 					m_lastAddTime = curTime;
+					char* szText = strstr(buf, "@");
+					if(szText != NULL)
+						sprintf(m_szAddTextPath, "/sys%s", szText+1);
+					else
+						memset(m_szAddTextPath, 0, sizeof(m_szAddTextPath));
 					pthread_create(&pt_recv, NULL, pthread_func_call, (void*)nState);
 #ifdef DEBUG
 					LogFile::write_sys_log(buf);
@@ -240,10 +258,10 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 				if(curTime - m_lastChangeTime > 2000)
 				{
 					m_lastChangeTime = curTime;
-					pthread_create(&pt_recv, NULL, pthread_func_call, (void*)nState);
-#ifdef DEBUG
-					LogFile::write_sys_log(buf);
-#endif
+//					pthread_create(&pt_recv, NULL, pthread_func_call, (void*)nState);
+//#ifdef DEBUG
+//					LogFile::write_sys_log(buf);
+//#endif
 				}
 			}
 			else if(nState == 3)
@@ -323,21 +341,40 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 		//char szPath[ROWSIZE] = { 0 };
 		char buf[MAXSIZE] = { 0 };
 		//get_current_path(szPath, sizeof(szPath));
-		char* szPath = get_temp_path();
-		sprintf(szPath, "%s%s", szPath, DEV_USB_FILE);
-		read_file_pos(buf, szPath, DeviceDetect::m_nUsbFileSize);
-		devinfo.get_dev_info(buf);
+		if(m_bGetDeviceFileMethod)
+		{
+			char szTmpPath[PATH_MAX] = { 0 };
+			char* szPath = get_temp_path();
+			sprintf(szTmpPath, "%s%s", szPath, DEV_USB_FILE);
+			read_file_pos(buf, szTmpPath, DeviceDetect::m_nUsbFileSize);
+			devinfo.get_dev_info(buf);
+		}
+		else
+		{
+			devinfo.get_dev_info(buf, m_szAddTextPath);
+		}
 		//global_sock_srv.send_socket_packs()
 		char content[ROWSIZE] = { 0 };
 		memset(buf, 0, sizeof(buf));
-		*(int*)(buf+4) = htonl(SOCKET_CODE_PHONEPLUGIN);
 		sprintf(content, "%s_%s_%s %s_%s", devinfo.m_szVid, devinfo.m_szPid, devinfo.m_szManFac,
 				devinfo.m_szProduct, devinfo.m_szImei);
-		int ctnlen = strlen(content);
-		memcpy(buf+8, content, ctnlen);
-		*(int*)buf = htonl(ctnlen + 8);
-		send_all_client_packs(buf, ctnlen+8);
+#ifdef DEBUG
+		char szLog[ROWSIZE] = { 0 };
+		sprintf(szLog, "get:%s:end", content);
+		LogFile::write_sys_log(szLog);
+#endif
+//		*(int*)(buf+4) = htonl(SOCKET_CODE_PHONEPLUGIN);
+//		int ctnlen = strlen(content);
+//		memcpy(buf+8, content, ctnlen);
+//		*(int*)buf = htonl(ctnlen + 8);
+//		send_all_client_packs(buf, ctnlen+8);
+		int nLen = grap_pack(buf, SOCKET_CODE_PHONEPLUGIN, content);
+		send_all_client_packs(buf, nLen);
 		DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
+
+		InterfaceFull::open_android_usbdebug();
+		nLen = grap_pack(buf, SOCKET_CODE_PHONEOPENUSBDEBUG, "1");
+		send_all_client_packs(buf, nLen);
 	}
 	else if(nState == 2)
 	{
@@ -346,10 +383,12 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 	else if(nState == 3)
 	{
 		char buf[MAXSIZE] = { 0 };
-		*(int*)(buf+4) = htonl(SOCKET_CODE_PHONEPULLOUT);
-		*(char*)(buf+8) = ' ';
-		*(int*)buf = htonl(9);
-		send_all_client_packs(buf, 9);
+//		*(int*)(buf+4) = htonl(SOCKET_CODE_PHONEPULLOUT);
+//		*(char*)(buf+8) = ' ';
+//		*(int*)buf = htonl(9);
+//		send_all_client_packs(buf, 9);
+		int nLen = grap_pack(buf, SOCKET_CODE_PHONEPULLOUT, NULL);
+		send_all_client_packs(buf, nLen);
 		DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
 	}
 

@@ -6,12 +6,15 @@
  */
 
 #include "PlugEvent.h"
+#include "LogFile.h"
 #include <string.h>
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <linux/netlink.h>
 #include <stdio.h>
 #include <unistd.h> //[getpid()]
+
+int PlugEvent::m_sckfd = 0;
 
 PlugEvent::PlugEvent() {
 	// TODO Auto-generated constructor stub
@@ -39,6 +42,9 @@ void PlugEvent::init_hotplug_sock()
 	if (m_sckfd == -1)
 	{
 		perror("socket");
+#ifdef DEBUG
+		LogFile::write_sys_log("create plug file descriptor failed!");
+#endif
 		return;
 	}
 	setsockopt(m_sckfd, SOL_SOCKET, SO_RCVBUF, &buffersize, sizeof(buffersize));
@@ -47,6 +53,9 @@ void PlugEvent::init_hotplug_sock()
 	if (ret < 0)
 	{
 		perror("bind");
+#ifdef DEBUG
+		LogFile::write_sys_log("bind plug file descriptor failed!");
+#endif
 		close(m_sckfd);
 		return;
 	}

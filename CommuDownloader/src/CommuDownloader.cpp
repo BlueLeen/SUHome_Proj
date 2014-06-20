@@ -181,6 +181,9 @@ int main() {
 	char szPath[ROWSIZE] = { 0 };
 	get_current_path(szPath, sizeof(szPath));
 	sprintf(szPath, "%s%s", szPath, APP_DATABASE_NAME);
+#ifdef DEBUG
+	LogFile::write_sys_log(szPath);
+#endif
 	//global_sql_mgr.open_sqlite_db(szPath);
 //	global_sql_mgr.create_sqlite_table(APP_DBTABLE_APKINFO, "apkid INTEGER, name VARCHAR(50),"
 //			"mode INTEGER, vername VARCHAR(20), pkgname VARCHAR(50), filesize REAL,"
@@ -286,12 +289,14 @@ void extract_content_info(const char* content, char (*field)[MINSIZE], int count
 
 int grap_pack(void* buf, int nCode, const char* content)
 {
-	int nLen = strlen(content);
-	*(int*)(buf+4) = htonl(nCode);
+	int nLen = 0;
+	if(content != NULL)
+		nLen = strlen(content);
+	*(int*)((unsigned char*)buf+4) = htonl(nCode);
 	if(nLen > 0)
 	{
-		memcpy(buf+8, content, nLen);
-		*(int*)buf = 8+nLen;
+		memcpy((unsigned char*)buf+8, content, nLen);
+		*(int*)buf = htonl(8+nLen);
 #ifdef DEBUG
 		char szLog[MINSIZE] = { 0 };
 		sprintf(szLog, "The send package is:%d %d %s", 8+nLen,
@@ -355,12 +360,24 @@ void parse_code(int code, char* szBuf, int cltFd)
 	}
 	else if(code == SOCKET_CODE_REBOOTBOX)
 	{
+		char szCmdString[MINSIZE] = { 0 };
+		char szCmdResult[MINSIZE] = { 0 };
+		strcpy(szCmdString, "reboot");
+		int len = grap_pack(buf, SOCKET_CODE_REBOOTBOX, NULL);
+		global_sock_srv.send_socket_packs(buf, len, cltFd);
+		execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
 	}
 	else if(code == SOCKET_CODE_RESETBOX)
 	{
 	}
 	else if(code == SOCKET_CODE_STOPBOX)
 	{
+		char szCmdString[MINSIZE] = { 0 };
+		char szCmdResult[MINSIZE] = { 0 };
+		strcpy(szCmdString, "reboot -p");
+		int len = grap_pack(buf, SOCKET_CODE_REBOOTBOX, NULL);
+		global_sock_srv.send_socket_packs(buf, len, cltFd);
+		execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
 	}
 	else if(code == SOCKET_CODE_UNINSTALLAPK)//delete the instruction
 	{
@@ -378,7 +395,11 @@ void parse_code(int code, char* szBuf, int cltFd)
 		char szApkPath[PATH_MAX] = { 0 };
 		get_current_path(szPath, sizeof(szPath));
 		sprintf(szApkPath, "%s%s/%s", szPath, APK_DIR_NAME, coninfo[0]);
-		InterfaceFull::install_android_apk(szApkPath);
+		int result = InterfaceFull::install_android_apk(szApkPath);
+		char szContent[ROWSIZE] = { 0 };
+		sprintf(szContent, "%s_%d", coninfo[0], result);
+		int len = grap_pack(buf, SOCKET_CODE_INSTALLAPK, szContent);
+		global_sock_srv.send_socket_packs(buf, len, cltFd);
 	}
 	else if(code == SOCKET_CODE_GETAPKLIST)//get apk list
 	{
@@ -474,6 +495,11 @@ void parse_code(int code, char* szBuf, int cltFd)
 		char szTemp[ROWSIZE] = { 0 };
 		char* szTmp = NULL;
 		int len = 0;
+#ifdef DEBUG
+		char szLog[MINSIZE] = { 0 };
+		sprintf(szLog, "The code is:%d,The content's:", SOCKET_CODE_GETBOXINFO);
+		LogFile::write_sys_log(szLog);
+#endif
 		//get the sdk version
 		strcpy(szCmdString, "cat /system/build.prop | grep \"ro.build.version.sdk\"");
 		execstream(szCmdString, szCmdResult, sizeof(szCmdResult));

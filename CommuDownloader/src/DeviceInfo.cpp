@@ -9,13 +9,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #define ROWSIZE 200
+
+extern bool is_file_exist(const char *path);
+extern int execstream(const char *cmdstring, char *buf, int size);
+extern void trim(char* str, char trimstr=' ');
 
 DeviceInfo::DeviceInfo()
 :m_nCode(-1),m_nUsbNum(-1),m_nState(0),m_nFormat(0)
 {
 	// TODO Auto-generated constructor stub
+	m_szVid[0] = ' ';
+	m_szPid[0] = ' ';
+	m_szManFac[0] = ' ';
+	m_szProduct[0] = ' ';
+	m_szImei[0] = ' ';
 }
 
 DeviceInfo::~DeviceInfo() {
@@ -154,6 +164,72 @@ void DeviceInfo::get_dev_info(char* buf)
 			}
 		}
 		nPos++;
+	}
+}
+
+void DeviceInfo::get_dev_info(char* buf, const char* path)
+{
+	char szPath[PATH_MAX] = { 0 };
+	if(!is_file_exist(path))
+		return;
+	else
+	{
+		char szCmdString[ROWSIZE] = { 0 };
+		char szCmdResult[ROWSIZE] = { 0 };
+		//get the idVendor
+		sprintf(szPath, "%s/idVendor", path);
+		sprintf(szCmdString, "cat %s", szPath);
+		if(is_file_exist(szPath))
+		{
+			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+			trim(szCmdResult);
+			strcpy(m_szVid, szCmdResult);
+		}
+		//get the idProduct
+		sprintf(szPath, "%s/idProduct", path);
+		sprintf(szCmdString, "cat %s", szPath);
+		if(is_file_exist(szPath))
+		{
+			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+			trim(szCmdResult);
+			strcpy(m_szPid, szCmdResult);
+		}
+		//get the manufacturer
+		sprintf(szPath, "%s/manufacturer", path);
+		sprintf(szCmdString, "cat %s", szPath);
+		if(is_file_exist(szPath))
+		{
+			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+			trim(szCmdResult);
+			strcpy(m_szManFac, szCmdResult);
+		}
+		//get the product
+		sprintf(szPath, "%s/product", path);
+		sprintf(szCmdString, "cat %s", szPath);
+		if(is_file_exist(szPath))
+		{
+			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+			trim(szCmdResult);
+			strcpy(m_szProduct, szCmdResult);
+		}
+		//get the imei
+		sprintf(szPath, "%s/serial", path);
+		sprintf(szCmdString, "cat %s", szPath);
+		if(is_file_exist(szPath))
+		{
+			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+			trim(szCmdResult);
+			strcpy(m_szImei, szCmdResult);
+		}
+		//get the imei
+		sprintf(szPath, "%s/serial", path);
+		sprintf(szCmdString, "cat %s", szPath);
+		if(is_file_exist(szPath))
+		{
+			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+			trim(szCmdResult);
+			strcpy(m_szImei, szCmdResult);
+		}
 	}
 }
 

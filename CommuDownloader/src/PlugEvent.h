@@ -13,15 +13,15 @@ public:
 	PlugEvent();
 	virtual ~PlugEvent();
 
-	int recv_hotplug_sock(char* buf, int len);
+	static int recv_hotplug_sock(char* buf, int len);
 
 private:
 	static const int UEVENT_BUFFER_SIZE = 2048;
 
-	int m_sckfd;
+	static int m_sckfd;
 
-	void init_hotplug_sock();
-	void close_hotplug_sock();
+	static void init_hotplug_sock();
+	static void close_hotplug_sock();
 };
 
 #endif /* PLUGEVENT_H_ */
