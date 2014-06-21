@@ -70,6 +70,7 @@ extern char* get_current_path(char* szPath, int nLen);
 static void* pthread_func_recv(void*);
 static void* pthread_func_recv_parse(void*);
 void parse_code(int code, char* szBuf, int cltFd);
+int extract_pack(void* buf, unsigned int& code, char* szContent);
 
 //int code_convert(char *from_charset,char *to_charset,char *inbuf,unsigned long int inlen,char *outbuf,unsigned long int outlen)
 //{
@@ -228,27 +229,30 @@ static void* pthread_func_recv(void* pSockClt)
 	void* pBuffer = NULL;
 	int sockClt = *(int*)pSockClt;
 	int ret = 0;
-	while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
+	while(true)
 	{
+		while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
+		{
+		}
+		if(ret == 2)
+		{
+			global_sock_srv.close_client_socket(sockClt);
+			remove_client_fd(sockClt);
+	#ifdef DEBUG
+			char szLog[MINSIZE] = { 0 };
+			sprintf(szLog, "%s:%d", "close client socket!", sockClt);
+			LogFile::write_sys_log(szLog);
+	#endif
+			return NULL;
+		}
+		int bufferSize = ntohl((int)*(int*)pBuffer);
+		SOCKCLIENTBUF* pSckCltBuf = new SOCKCLIENTBUF();
+		pSckCltBuf->pBuf = pBuffer;
+		pSckCltBuf->clientFd = sockClt;
+		if(bufferSize > 0)
+			//pthread_create(&pt_recv_parse, NULL, pthread_func_recv_parse, pBuffer);
+			pthread_create(&pt_recv_parse, NULL, pthread_func_recv_parse, pSckCltBuf);
 	}
-	if(ret == 2)
-	{
-		global_sock_srv.close_client_socket(sockClt);
-		remove_client_fd(sockClt);
-#ifdef DEBUG
-		char szLog[MINSIZE] = { 0 };
-		sprintf(szLog, "%s:%d", "close client socket!", sockClt);
-		LogFile::write_sys_log(szLog);
-#endif
-		return NULL;
-	}
-	int bufferSize = ntohl((int)*(int*)pBuffer);
-	SOCKCLIENTBUF* pSckCltBuf = new SOCKCLIENTBUF();
-	pSckCltBuf->pBuf = pBuffer;
-	pSckCltBuf->clientFd = sockClt;
-	if(bufferSize > 0)
-		//pthread_create(&pt_recv_parse, NULL, pthread_func_recv_parse, pBuffer);
-		pthread_create(&pt_recv_parse, NULL, pthread_func_recv_parse, pSckCltBuf);
 
 	return NULL;
 }
@@ -261,10 +265,13 @@ static void* pthread_func_recv_parse(void* pSckCltBuf)
 //	unsigned int code = ntohl(*(int*)(pBuf+4));
 //	char szContent[SOCKET_RECVPACK_CONTENT] = { 0 };
 //	memcpy(szContent, pBuf+8, len-8);
-	unsigned int len = ntohl(*(int*)pscb->pBuf);
-	unsigned int code = ntohl(*(int*)((unsigned char*)pscb->pBuf+4));
+//	unsigned int len = ntohl(*(int*)pscb->pBuf);
+//	unsigned int code = ntohl(*(int*)((unsigned char*)pscb->pBuf+4));
+//	char szContent[SOCKET_RECVPACK_CONTENT] = { 0 };
+//	memcpy(szContent, (unsigned char*)pscb->pBuf+8, len-8);
+	unsigned int code;
 	char szContent[SOCKET_RECVPACK_CONTENT] = { 0 };
-	memcpy(szContent, (unsigned char*)pscb->pBuf+8, len-8);
+	extract_pack(pscb->pBuf, code, szContent);
 	parse_code(code, szContent, pscb->clientFd);
 	free(pscb->pBuf);
 	delete pscb;
@@ -316,6 +323,33 @@ int grap_pack(void* buf, int nCode, const char* content)
 #endif
 		return 8;
 	}
+}
+
+int extract_pack(void* buf, unsigned int& code, char* szContent)
+{
+	unsigned int len = ntohl(*(int*)buf);
+	code = ntohl(*(int*)((unsigned char*)buf+4));
+	if(len > 8)
+	{
+		memcpy(szContent, (unsigned char*)buf+8, len-8);
+#ifdef DEBUG
+		char szLog[MINSIZE] = { 0 };
+		sprintf(szLog, "The receive package is:%d %d %s", len,
+				code, szContent);
+		LogFile::write_sys_log(szLog);
+#endif
+	}
+	else
+	{
+		strcpy(szContent, "");
+#ifdef DEBUG
+		char szLog[MINSIZE] = { 0 };
+		sprintf(szLog, "The receive package is:%d %d,the content is:no!", len,
+				code);
+		LogFile::write_sys_log(szLog);
+#endif
+	}
+	return len;
 }
 
 int execstream(const char *cmdstring, char *buf, int size)
@@ -521,6 +555,9 @@ void parse_code(int code, char* szBuf, int cltFd)
 		{
 			strcat(szContent, " _");
 		}
+#ifdef DEBUG
+		LogFile::write_sys_log(szContent);
+#endif
 		//get the rom version
 		memset(szCmdResult, 0, sizeof(szCmdResult));
 		strcpy(szCmdString, "cat /system/build.prop | grep \"ro.build.version.release\"");
@@ -544,6 +581,9 @@ void parse_code(int code, char* szBuf, int cltFd)
 		{
 			strcat(szContent, " _");
 		}
+#ifdef DEBUG
+		LogFile::write_sys_log(szContent);
+#endif
 		//get the memory space
 		memset(szCmdResult, 0, sizeof(szCmdResult));
 		strcpy(szCmdString, "cat /proc/meminfo | grep \"MemTotal\"");
@@ -563,6 +603,9 @@ void parse_code(int code, char* szBuf, int cltFd)
 		{
 			strcat(szContent, " _");
 		}
+#ifdef DEBUG
+		LogFile::write_sys_log(szContent);
+#endif
 		//get the cpu frequence
 		memset(szCmdResult, 0, sizeof(szCmdResult));
 		strcpy(szCmdString, "cat /proc/cpuinfo | grep \"BogoMIPS\"");
@@ -582,6 +625,10 @@ void parse_code(int code, char* szBuf, int cltFd)
 		{
 			sprintf(szContent, "%s%s", szContent, " ");
 		}
+
+#ifdef DEBUG
+		LogFile::write_sys_log(szContent);
+#endif
 
 		int nLen = grap_pack(buf, SOCKET_CODE_GETBOXINFO, szContent);
 		global_sock_srv.send_socket_packs(buf, nLen, cltFd);

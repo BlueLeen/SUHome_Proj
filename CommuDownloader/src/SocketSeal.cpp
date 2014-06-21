@@ -80,8 +80,9 @@ int SocketSeal::accept_client_socket()
 {
 	int sockCltfd;
 	struct sockaddr_in remote_addr; //客户端网络地址结构体
-	unsigned int sin_size;
+	socklen_t sin_size;
 	sin_size=sizeof(struct sockaddr_in);
+	//sin_size=sizeof(struct sockaddr);
 	bzero(&remote_addr,sizeof(remote_addr)); //把一段内存区的内容全部设置为0
 	if((sockCltfd=accept(m_sockSrvfd,(struct sockaddr *)&remote_addr,&sin_size))<0)
 	{
@@ -115,11 +116,11 @@ int SocketSeal::receive_buffer(int nClientSockfd, void** pBuf)
 	static int fileSize = 0;
 	unsigned char buf[RCVSIZE] = { 0 };
 	int len=recv(nClientSockfd, buf, RCVSIZE, 0);
-	if(len == 0)
-		return 2;
 	if(nFlag)
 	{
 		fileSize = ntohl((int)(*(int*)buf));
+		if(fileSize == 0 || len > 4000)
+			return 2;
 		nFlag = 0;
 		*pBuf = malloc(fileSize);
 #ifdef DEBUG
