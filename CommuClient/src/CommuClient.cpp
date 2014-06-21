@@ -52,7 +52,7 @@ int grap_pack(void* buf, int nCode, const char* content)
 	if(nLen > 0)
 	{
 		memcpy((unsigned char*)buf+8, content, nLen);
-		*(int*)buf = 8+nLen;
+		*(int*)buf = htonl(8+nLen);
 		char szLog[MINSIZE] = { 0 };
 		sprintf(szLog, "The send package is:%d %d %s", 8+nLen,
 				nCode, content);
@@ -70,6 +70,18 @@ int grap_pack(void* buf, int nCode, const char* content)
 	}
 }
 
+static void* pthread_func_recv(void* pSockClt)
+{
+	pthread_detach(pthread_self());
+	char buf[BUFSIZ] = { 0 };
+	while(true)
+	{
+		receive_socket_packs(buf, BUFSIZ, global_client_sockfd);
+		extract_pack(buf);
+	}
+	return NULL;
+}
+
 int main() {
 	char buf[BUFSIZ] = { 0 };
     printf("connected to server\n");
@@ -78,6 +90,9 @@ int main() {
 	//send_socket_packs(SOCKET_STATR_TOKEN, strlen(SOCKET_STATR_TOKEN)+1, global_client_sockfd);
 	receive_socket_packs(buf, BUFSIZ, global_client_sockfd);
 	extract_pack(buf);
+
+	pthread_t pt_recv = 0;
+	pthread_create(&pt_recv, NULL, pthread_func_recv, &global_client_sockfd);
 
 	while(true)
 	{
@@ -93,14 +108,15 @@ int main() {
 				int code;
 				char content[200] = { 0 };
 				scanf("%d %s", &code, content);
-				*(int*)(buf+4) = htonl(code);
-				memcpy(buf+8, content, strlen(content)+1);
-				len = 8+strlen(content)+1;
-				*(int*)buf = htonl(len);
+//				*(int*)(buf+4) = htonl(code);
+//				memcpy(buf+8, content, strlen(content)+1);
+//				len = 8+strlen(content)+1;
+//				*(int*)buf = htonl(len);
+				len = grap_pack(buf, code, content);
 				send_socket_packs(buf, len, global_client_sockfd);//发送欢迎信息
 				printf("Send packets:%d %d %s\n", len, code, content);
-				receive_socket_packs(buf, BUFSIZ, global_client_sockfd);
-				extract_pack(buf);
+				//receive_socket_packs(buf, BUFSIZ, global_client_sockfd);
+				sleep(2);
 				if (code == 0)
 				{
 					break;
