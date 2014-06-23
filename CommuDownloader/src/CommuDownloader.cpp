@@ -14,6 +14,8 @@
 #include <pthread.h>
 #include <limits.h>
 #include <dirent.h>
+#include <sys/time.h>
+#include <signal.h>
 #include "SocketSeal.h"
 #include "LogFile.h"
 #include "DeviceDetect.h"
@@ -53,6 +55,7 @@ using namespace std;
 #define SOCKET_CODE_GETBOXINFO  			  	 98
 #define SOCKET_CODE_GETWORKMODE  			  	 99
 #define SOCKET_CODE_COMMUSTABLISHED  			 100
+#define SOCKET_CODE_HEARTBEAT  			         104
 
 DeviceDetect global_detect;
 SocketSeal global_sock_srv;
@@ -70,6 +73,7 @@ extern char* get_current_path(char* szPath, int nLen);
 static void* pthread_func_recv(void*);
 static void* pthread_func_recv_parse(void*);
 void parse_code(int code, char* szBuf, int cltFd);
+int grap_pack(void* buf, int nCode, const char* content);
 int extract_pack(void* buf, unsigned int& code, char* szContent);
 
 //int code_convert(char *from_charset,char *to_charset,char *inbuf,unsigned long int inlen,char *outbuf,unsigned long int outlen)
@@ -177,11 +181,45 @@ int get_all_apk(char *path, char (*fileArr)[TINYSIZE])
 	return nCount;
 }
 
+void set_timer()
+{
+	struct itimerval oldtv;
+    struct itimerval itv;
+    itv.it_interval.tv_sec = 60;
+    itv.it_interval.tv_usec = 0;
+    itv.it_value.tv_sec = 1;
+    itv.it_value.tv_usec = 0;
+    setitimer(ITIMER_REAL, &itv, &oldtv);
+}
+
+void signal_handler(int signo)
+{
+	switch (signo) {
+	case SIGALRM:
+	{
+		char buf[MAXSIZE] = { 0 };
+		int nLen = grap_pack(buf, SOCKET_CODE_HEARTBEAT, NULL);
+		send_all_client_packs(buf, nLen);
+#ifdef DEBUG
+		char szLog[MINSIZE] = { 0 };
+		sprintf(szLog, "send heartbeat instruction once minute!");
+		LogFile::write_sys_log(szLog);
+#endif
+		break;
+	}
+//	case SIGVTALRM:
+//	printf("Catch a signal -- SIGVTALRM\n");
+//	break;
+	}
+}
+
 int main() {
 	//cout << "!!!Hello World!!!" << endl; // prints !!!Hello World!!!
 	char szPath[ROWSIZE] = { 0 };
 	get_current_path(szPath, sizeof(szPath));
 	sprintf(szPath, "%s%s", szPath, APP_DATABASE_NAME);
+	set_timer();
+	signal(SIGALRM, signal_handler);
 #ifdef DEBUG
 	LogFile::write_sys_log(szPath);
 #endif
@@ -228,11 +266,15 @@ static void* pthread_func_recv(void* pSockClt)
 	pthread_t pt_recv_parse = 0;
 	void* pBuffer = NULL;
 	int sockClt = *(int*)pSockClt;
-	int ret = 0;
+	static int ret = 0;
 	while(true)
 	{
+		if(sockClt <= 0)
+			break;
 		while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
 		{
+			if(sockClt <= 0)
+				break;
 		}
 		if(ret == 2)
 		{
@@ -387,253 +429,263 @@ void trim(char* str, char trimstr=' ')
 
 void parse_code(int code, char* szBuf, int cltFd)
 {
-	char buf[BUFSIZ] = { 0 }; //数据传送的缓冲区
-	char szPath[PATH_MAX] = { 0 };
-	if(code == SOCKET_CODE_UPGRADEBOX)
+	try
 	{
-	}
-	else if(code == SOCKET_CODE_REBOOTBOX)
-	{
-		char szCmdString[MINSIZE] = { 0 };
-		char szCmdResult[MINSIZE] = { 0 };
-		strcpy(szCmdString, "reboot");
-		int len = grap_pack(buf, SOCKET_CODE_REBOOTBOX, NULL);
-		global_sock_srv.send_socket_packs(buf, len, cltFd);
-		execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
-	}
-	else if(code == SOCKET_CODE_RESETBOX)
-	{
-	}
-	else if(code == SOCKET_CODE_STOPBOX)
-	{
-		char szCmdString[MINSIZE] = { 0 };
-		char szCmdResult[MINSIZE] = { 0 };
-		strcpy(szCmdString, "reboot -p");
-		int len = grap_pack(buf, SOCKET_CODE_REBOOTBOX, NULL);
-		global_sock_srv.send_socket_packs(buf, len, cltFd);
-		execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
-	}
-	else if(code == SOCKET_CODE_UNINSTALLAPK)//delete the instruction
-	{
-	}
-	else if(code == SOCKET_CODE_INSTALLAPK)
-	{
-		char coninfo[3][MINSIZE];
-		extract_content_info(szBuf, coninfo, 1);
-#ifdef DEBUG
-		char szLog[MINSIZE] = { 0 };
-		sprintf(szLog, "The content's %d fields value is:%s", 1,
-				coninfo[0]);
-		LogFile::write_sys_log(szLog);
-#endif
-		char szApkPath[PATH_MAX] = { 0 };
-		get_current_path(szPath, sizeof(szPath));
-		sprintf(szApkPath, "%s%s/%s", szPath, APK_DIR_NAME, coninfo[0]);
-		int result = InterfaceFull::install_android_apk(szApkPath);
-		char szContent[ROWSIZE] = { 0 };
-		sprintf(szContent, "%s_%d", coninfo[0], result);
-		int len = grap_pack(buf, SOCKET_CODE_INSTALLAPK, szContent);
-		global_sock_srv.send_socket_packs(buf, len, cltFd);
-	}
-	else if(code == SOCKET_CODE_GETAPKLIST)//get apk list
-	{
-		char szApkBuf[MAXSIZE];
-		char apklist[200][TINYSIZE];
-		int count = get_all_apk(APK_TEMP_PATH, apklist);
-		memset(szApkBuf, 0, sizeof(szApkBuf));
-		strcpy(szApkBuf, apklist[0]);
-		int i;
-		for(i=1; i<count; i++)
+		char buf[BUFSIZ] = { 0 }; //数据传送的缓冲区
+		char szPath[PATH_MAX] = { 0 };
+		if(code == SOCKET_CODE_UPGRADEBOX)
 		{
-			strcat(szApkBuf, "_");
-			strcat(szApkBuf, apklist[i]);
 		}
-		int len = grap_pack(buf, SOCKET_CODE_GETAPKLIST, szApkBuf);
-		global_sock_srv.send_socket_packs(buf, len, cltFd);
-	}
-	else if(code == SOCKET_CODE_DELBOXAPK)
-	{
-		char coninfo[3][MINSIZE];
-		extract_content_info(szBuf, coninfo, 3);
-#ifdef DEBUG
-		char szLog[MINSIZE] = { 0 };
-		sprintf(szLog, "The code is:%d,The content's %d fields value is:%s %s %s", SOCKET_CODE_DELBOXAPK, 3,
-				coninfo[0], coninfo[1], coninfo[2]);
-		LogFile::write_sys_log(szLog);
-#endif
-		get_current_path(szPath, sizeof(szPath));
-		sprintf(szPath, "%s%s/%s", szPath, APK_DIR_NAME, coninfo[0]);
-		int nLen = 0;
-		if(!remove(szPath))
-			nLen = grap_pack(buf, SOCKET_CODE_DELBOXAPK, "1");
-		else
-			nLen = grap_pack(buf, SOCKET_CODE_DELBOXAPK, "2");
-		global_sock_srv.send_socket_packs(buf, nLen, cltFd);
-	}
-	else if(code == SOCKET_CODE_ADDBOXAPK || code == SOCKET_CODE_CHNBOXAPK)
-	{
-		//char sqltext[ROWSIZE] = { 0 };
-		//char coninfo[4][MINSIZE];
-		//extract_content_info(szBuf, coninfo, 4);
-		char coninfo[3][MINSIZE];
-		extract_content_info(szBuf, coninfo, 3);
-		//sprintf(sqltext, "%s, '%s'", coninfo[0], coninfo[1]);
-#ifdef DEBUG
-		char szLog[MINSIZE] = { 0 };
-		sprintf(szLog, "The code is:%d,The content's %d fields value is:%s %s %s", SOCKET_CODE_ADDBOXAPK, 3,
-				coninfo[0], coninfo[1], coninfo[2]);
-		LogFile::write_sys_log(szLog);
-#endif
-		char szApkPath[PATH_MAX] = { 0 };
-		sprintf(szApkPath, "%s/%s", APK_TEMP_PATH, coninfo[0]);
-		if(!is_file_exist(szApkPath))
+		else if(code == SOCKET_CODE_REBOOTBOX)
 		{
-//			*(int*)buf = htonl(9);
-//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
-//			*(char*)(buf+8) = '2';
-//			global_sock_srv.send_socket_packs(buf, 9, cltFd);
-			int nLen = grap_pack(buf, SOCKET_CODE_ADDBOXAPK, "2");
-			global_sock_srv.send_socket_packs(buf, nLen, cltFd);
-			return;
+			char szCmdString[MINSIZE] = { 0 };
+			char szCmdResult[MINSIZE] = { 0 };
+			strcpy(szCmdString, "reboot");
+			int len = grap_pack(buf, SOCKET_CODE_REBOOTBOX, NULL);
+			global_sock_srv.send_socket_packs(buf, len, cltFd);
+			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
 		}
-		char szApkFullPath[PATH_MAX] = { 0 };
-		get_current_path(szPath, sizeof(szPath));
-		sprintf(szApkFullPath, "%s%s/%s", szPath, APK_DIR_NAME, coninfo[1]);
-		rename(szApkPath, szApkFullPath);
-		//if(!global_sql_mgr.insert_sqlite_table(APP_DBTABLE_APKINFO, sqltext))
-		if(false)
+		else if(code == SOCKET_CODE_RESETBOX)
 		{
-			remove(szApkFullPath);
-//			*(int*)buf = htonl(9);
-//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
-//			*(char*)(buf+8) = '2';
-//			global_sock_srv.send_socket_packs(buf, 9, cltFd);
-			int nLen = grap_pack(buf, SOCKET_CODE_ADDBOXAPK, "2");
+		}
+		else if(code == SOCKET_CODE_STOPBOX)
+		{
+			char szCmdString[MINSIZE] = { 0 };
+			char szCmdResult[MINSIZE] = { 0 };
+			strcpy(szCmdString, "reboot -p");
+			int len = grap_pack(buf, code, NULL);
+			global_sock_srv.send_socket_packs(buf, len, cltFd);
+			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+		}
+		else if(code == SOCKET_CODE_UNINSTALLAPK)//delete the instruction
+		{
+		}
+		else if(code == SOCKET_CODE_INSTALLAPK)
+		{
+			char coninfo[3][MINSIZE];
+			extract_content_info(szBuf, coninfo, 1);
+	#ifdef DEBUG
+			char szLog[MINSIZE] = { 0 };
+			sprintf(szLog, "The content's %d fields value is:%s", 1,
+					coninfo[0]);
+			LogFile::write_sys_log(szLog);
+	#endif
+			char szApkPath[PATH_MAX] = { 0 };
+			get_current_path(szPath, sizeof(szPath));
+			sprintf(szApkPath, "%s%s/%s", szPath, APK_DIR_NAME, coninfo[0]);
+			int result = InterfaceFull::install_android_apk(szApkPath);
+			char szContent[ROWSIZE] = { 0 };
+			sprintf(szContent, "%s_%d", coninfo[0], result);
+			int len = grap_pack(buf, SOCKET_CODE_INSTALLAPK, szContent);
+			global_sock_srv.send_socket_packs(buf, len, cltFd);
+		}
+		else if(code == SOCKET_CODE_GETAPKLIST)//get apk list
+		{
+			char szApkBuf[MAXSIZE];
+			char apklist[200][TINYSIZE];
+			int count = get_all_apk(APK_TEMP_PATH, apklist);
+			memset(szApkBuf, 0, sizeof(szApkBuf));
+			strcpy(szApkBuf, apklist[0]);
+			int i;
+			for(i=1; i<count; i++)
+			{
+				strcat(szApkBuf, "_");
+				strcat(szApkBuf, apklist[i]);
+			}
+			int len = grap_pack(buf, SOCKET_CODE_GETAPKLIST, szApkBuf);
+			global_sock_srv.send_socket_packs(buf, len, cltFd);
+		}
+		else if(code == SOCKET_CODE_DELBOXAPK)
+		{
+			char coninfo[3][MINSIZE];
+			extract_content_info(szBuf, coninfo, 3);
+	#ifdef DEBUG
+			char szLog[MINSIZE] = { 0 };
+			sprintf(szLog, "The code is:%d,The content's %d fields value is:%s %s %s", SOCKET_CODE_DELBOXAPK, 3,
+					coninfo[0], coninfo[1], coninfo[2]);
+			LogFile::write_sys_log(szLog);
+	#endif
+			get_current_path(szPath, sizeof(szPath));
+			sprintf(szPath, "%s%s/%s", szPath, APK_DIR_NAME, coninfo[0]);
+			int nLen = 0;
+			if(!remove(szPath))
+				nLen = grap_pack(buf, SOCKET_CODE_DELBOXAPK, "1");
+			else
+				nLen = grap_pack(buf, SOCKET_CODE_DELBOXAPK, "2");
 			global_sock_srv.send_socket_packs(buf, nLen, cltFd);
 		}
-		else
+		else if(code == SOCKET_CODE_ADDBOXAPK || code == SOCKET_CODE_CHNBOXAPK)
 		{
-//			*(int*)buf = htonl(9);
-//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
-//			*(char*)(buf+8) = '1';
-//			global_sock_srv.send_socket_packs(buf, 9, cltFd);
-			int nLen = grap_pack(buf, SOCKET_CODE_ADDBOXAPK, "1");
-			global_sock_srv.send_socket_packs(buf, nLen, cltFd);
-		}
-	}
-	else if(code == SOCKET_CODE_GETBOXINFO)
-	{
-		char szCmdString[MINSIZE] = { 0 };
-		char szCmdResult[MINSIZE] = { 0 };
-		char szContent[ROWSIZE] = { 0 };
-		char szTemp[ROWSIZE] = { 0 };
-		char* szTmp = NULL;
-		int len = 0;
-#ifdef DEBUG
-		char szLog[MINSIZE] = { 0 };
-		sprintf(szLog, "The code is:%d,The content's:", SOCKET_CODE_GETBOXINFO);
-		LogFile::write_sys_log(szLog);
-#endif
-		//get the sdk version
-		strcpy(szCmdString, "cat /system/build.prop | grep \"ro.build.version.sdk\"");
-		execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
-		if(szCmdResult[0] != '\0')
-		{
-			szTmp = strstr(szCmdResult, "=");
-			strcpy(szCmdResult, szTmp+1);
-			len = strlen(szCmdResult);
-			if(szCmdResult[len-1] == '\n')
-				szCmdResult[len-1] = '_';
+			//char sqltext[ROWSIZE] = { 0 };
+			//char coninfo[4][MINSIZE];
+			//extract_content_info(szBuf, coninfo, 4);
+			char coninfo[3][MINSIZE];
+			extract_content_info(szBuf, coninfo, 3);
+			//sprintf(sqltext, "%s, '%s'", coninfo[0], coninfo[1]);
+	#ifdef DEBUG
+			char szLog[MINSIZE] = { 0 };
+			sprintf(szLog, "The code is:%d,The content's %d fields value is:%s %s %s", SOCKET_CODE_ADDBOXAPK, 3,
+					coninfo[0], coninfo[1], coninfo[2]);
+			LogFile::write_sys_log(szLog);
+	#endif
+			char szApkPath[PATH_MAX] = { 0 };
+			sprintf(szApkPath, "%s/%s", APK_TEMP_PATH, coninfo[0]);
+			if(!is_file_exist(szApkPath))
+			{
+	//			*(int*)buf = htonl(9);
+	//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
+	//			*(char*)(buf+8) = '2';
+	//			global_sock_srv.send_socket_packs(buf, 9, cltFd);
+				int nLen = grap_pack(buf, code, "2");
+				global_sock_srv.send_socket_packs(buf, nLen, cltFd);
+				return;
+			}
+			char szApkFullPath[PATH_MAX] = { 0 };
+			get_current_path(szPath, sizeof(szPath));
+			sprintf(szApkFullPath, "%s%s/%s", szPath, APK_DIR_NAME, coninfo[0]);
+			rename(szApkPath, szApkFullPath);
+			//if(!global_sql_mgr.insert_sqlite_table(APP_DBTABLE_APKINFO, sqltext))
+			if(false)
+			{
+				remove(szApkFullPath);
+	//			*(int*)buf = htonl(9);
+	//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
+	//			*(char*)(buf+8) = '2';
+	//			global_sock_srv.send_socket_packs(buf, 9, cltFd);
+				int nLen = grap_pack(buf, code, "2");
+				global_sock_srv.send_socket_packs(buf, nLen, cltFd);
+			}
 			else
 			{
-				szCmdResult[len] = '_';
-				len++;
+	//			*(int*)buf = htonl(9);
+	//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
+	//			*(char*)(buf+8) = '1';
+	//			global_sock_srv.send_socket_packs(buf, 9, cltFd);
+				int nLen = grap_pack(buf, code, "1");
+				global_sock_srv.send_socket_packs(buf, nLen, cltFd);
 			}
-			strcat(szContent, szCmdResult);
 		}
-		else
+		else if(code == SOCKET_CODE_GETBOXINFO)
 		{
-			strcat(szContent, " _");
-		}
-#ifdef DEBUG
-		LogFile::write_sys_log(szContent);
-#endif
-		//get the rom version
-		memset(szCmdResult, 0, sizeof(szCmdResult));
-		strcpy(szCmdString, "cat /system/build.prop | grep \"ro.build.version.release\"");
-		execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
-		if(szCmdResult[0] != '\0')
-		{
-			szTmp = strstr(szCmdResult, "=");
-			strcpy(szTemp, szTmp+1);
-			strcpy(szCmdResult, szTemp);
-			len = strlen(szCmdResult);
-			if(szCmdResult[len-1] == '\n')
-				szCmdResult[len-1] = '_';
+			char szCmdString[MINSIZE] = { 0 };
+			char szCmdResult[MINSIZE] = { 0 };
+			char szContent[ROWSIZE] = { 0 };
+			char szTemp[ROWSIZE] = { 0 };
+			char* szTmp = NULL;
+			int len = 0;
+	#ifdef DEBUG
+			char szLog[MINSIZE] = { 0 };
+			sprintf(szLog, "The code is:%d,The content's:", SOCKET_CODE_GETBOXINFO);
+			LogFile::write_sys_log(szLog);
+	#endif
+			//get the sdk version
+			strcpy(szCmdString, "cat /system/build.prop | grep \"ro.build.version.sdk\"");
+			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+			if(szCmdResult[0] != '\0')
+			{
+				szTmp = strstr(szCmdResult, "=");
+				strcpy(szCmdResult, szTmp+1);
+				len = strlen(szCmdResult);
+				if(szCmdResult[len-1] == '\n')
+					szCmdResult[len-1] = '_';
+				else
+				{
+					szCmdResult[len] = '_';
+					len++;
+				}
+				strcat(szContent, szCmdResult);
+			}
 			else
 			{
-				szCmdResult[len] = '_';
-				len++;
+				strcat(szContent, " _");
 			}
-			strcat(szContent, szCmdResult);
-		}
-		else
-		{
-			strcat(szContent, " _");
-		}
-#ifdef DEBUG
-		LogFile::write_sys_log(szContent);
-#endif
-		//get the memory space
-		memset(szCmdResult, 0, sizeof(szCmdResult));
-		strcpy(szCmdString, "cat /proc/meminfo | grep \"MemTotal\"");
-		execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
-		if(szCmdResult[0] != '\0')
-		{
-			szTmp = strstr(szCmdResult, ":");
-			strcpy(szTemp, szTmp+1);
-			strcpy(szCmdResult, szTemp);
-			trim(szCmdResult);
-			szTmp = strstr(szCmdResult, " ");
-			*szTmp = '\0';
-			unsigned long space = atol(szCmdResult) / 1000;
-			sprintf(szContent, "%s%ld_", szContent, space);
-		}
-		else
-		{
-			strcat(szContent, " _");
-		}
-#ifdef DEBUG
-		LogFile::write_sys_log(szContent);
-#endif
-		//get the cpu frequence
-		memset(szCmdResult, 0, sizeof(szCmdResult));
-		strcpy(szCmdString, "cat /proc/cpuinfo | grep \"BogoMIPS\"");
-		execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
-		if(szCmdResult[0] != '\0')
-		{
-			szTmp = strstr(szCmdResult, ":");
-			strcpy(szTemp, szTmp+1);
-			strcpy(szCmdResult, szTemp);
-			trim(szCmdResult);
-			szTmp = strstr(szCmdResult, " ");
-			*szTmp = '\0';
-			float speed = atol(szCmdResult) / 1000;
-			sprintf(szContent, "%s%.3f", szContent, speed);
-		}
-		else
-		{
-			sprintf(szContent, "%s%s", szContent, " ");
-		}
+	#ifdef DEBUG
+			LogFile::write_sys_log(szContent);
+	#endif
+			//get the rom version
+			memset(szCmdResult, 0, sizeof(szCmdResult));
+			strcpy(szCmdString, "cat /system/build.prop | grep \"ro.build.version.release\"");
+			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+			if(szCmdResult[0] != '\0')
+			{
+				szTmp = strstr(szCmdResult, "=");
+				strcpy(szTemp, szTmp+1);
+				strcpy(szCmdResult, szTemp);
+				len = strlen(szCmdResult);
+				if(szCmdResult[len-1] == '\n')
+					szCmdResult[len-1] = '_';
+				else
+				{
+					szCmdResult[len] = '_';
+					len++;
+				}
+				strcat(szContent, szCmdResult);
+			}
+			else
+			{
+				strcat(szContent, " _");
+			}
+	#ifdef DEBUG
+			LogFile::write_sys_log(szContent);
+	#endif
+			//get the memory space
+			memset(szCmdResult, 0, sizeof(szCmdResult));
+			strcpy(szCmdString, "cat /proc/meminfo | grep \"MemTotal\"");
+			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+			if(szCmdResult[0] != '\0')
+			{
+				szTmp = strstr(szCmdResult, ":");
+				strcpy(szTemp, szTmp+1);
+				strcpy(szCmdResult, szTemp);
+				trim(szCmdResult);
+				szTmp = strstr(szCmdResult, " ");
+				if(szTmp != NULL)
+					*szTmp = '\0';
+				unsigned long space = atol(szCmdResult) / 1000;
+				sprintf(szContent, "%s%ld_", szContent, space);
+			}
+			else
+			{
+				strcat(szContent, " _");
+			}
+	#ifdef DEBUG
+			LogFile::write_sys_log(szContent);
+	#endif
+			//get the cpu frequence
+			memset(szCmdResult, 0, sizeof(szCmdResult));
+			strcpy(szCmdString, "cat /proc/cpuinfo | grep \"BogoMIPS\"");
+			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+			//strcpy(szCmdResult, "BogoMIPS        : 119.10");
+			if(szCmdResult[0] != '\0')
+			{
+				szTmp = strstr(szCmdResult, ":");
+				strcpy(szTemp, szTmp+1);
+				strcpy(szCmdResult, szTemp);
+				trim(szCmdResult);
+				szTmp = strstr(szCmdResult, " ");
+				if(szTmp != NULL)
+					*szTmp = '\0';
+				float speed = atof(szCmdResult) / 1000;
+				sprintf(szContent, "%s%.3f", szContent, speed);
+			}
+			else
+			{
+				sprintf(szContent, "%s%s", szContent, " ");
+			}
 
-#ifdef DEBUG
-		LogFile::write_sys_log(szContent);
-#endif
+	#ifdef DEBUG
+			LogFile::write_sys_log(szContent);
+	#endif
 
-		int nLen = grap_pack(buf, SOCKET_CODE_GETBOXINFO, szContent);
-		global_sock_srv.send_socket_packs(buf, nLen, cltFd);
+			int nLen = grap_pack(buf, SOCKET_CODE_GETBOXINFO, szContent);
+			global_sock_srv.send_socket_packs(buf, nLen, cltFd);
+		}
+		else if(code == SOCKET_CODE_GETWORKMODE)//delete the instruction
+		{
+		}
 	}
-	else if(code == SOCKET_CODE_GETWORKMODE)//delete the instruction
+	catch(...)
 	{
+		LogFile::write_sys_log("The exception happened!");
 	}
 }

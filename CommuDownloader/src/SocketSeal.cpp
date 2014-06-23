@@ -109,13 +109,21 @@ int SocketSeal::receive_socket_packs(char* szBuf, int nSize, int nClientSockfd)
 	return len;
 }
 
-int SocketSeal::receive_buffer(int nClientSockfd, void** pBuf)
+int SocketSeal::receive_buffer(int& nClientSockfd, void** pBuf)
 {
 	static int nFlag = 1;
 	static int nRec = 0;
 	static int fileSize = 0;
 	unsigned char buf[RCVSIZE] = { 0 };
-	int len=recv(nClientSockfd, buf, RCVSIZE, 0);
+	static int len = 1;
+	if(len <= 0)
+	{
+		close(nClientSockfd);
+		nClientSockfd = -1;
+		return 2;
+	}
+	else
+		len=recv(nClientSockfd, buf, RCVSIZE, 0);
 	if(nFlag)
 	{
 		fileSize = ntohl((int)(*(int*)buf));
