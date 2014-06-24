@@ -372,8 +372,8 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 		send_all_client_packs(buf, nLen);
 		DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
 
-		InterfaceFull::open_android_usbdebug();
-		nLen = grap_pack(buf, SOCKET_CODE_PHONEOPENUSBDEBUG, "1");
+		bool bDebug = InterfaceFull::open_android_usbdebug();
+		nLen = grap_pack(buf, SOCKET_CODE_PHONEOPENUSBDEBUG, bDebug==true?"1":"2");
 		send_all_client_packs(buf, nLen);
 	}
 	else if(nState == 2)

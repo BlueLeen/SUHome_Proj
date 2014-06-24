@@ -14,6 +14,7 @@
 #include <sys/wait.h>
 #include <limits.h>
 #include "LogFile.h"
+#include "CLock.h"
 
 #define MAXSIZE 1024
 #define ROWSIZE 200
@@ -33,25 +34,36 @@ InterfaceFull::~InterfaceFull() {
 	// TODO Auto-generated destructor stub
 }
 
-void InterfaceFull::open_android_usbdebug()
+bool InterfaceFull::open_android_usbdebug()
 {
-	bool bExit = false;
+    CLock lock;
+	static bool bExit = false;
+	static int nCount = 0;
 	char shellComm[MAXSIZE] = { 0 };
 	char shellCommDevice[MAXSIZE] = { 0 };
+	char shellCommState[MAXSIZE] = { 0 };
 	char szAdbPath[PATH_MAX] = { 0 };
 	char szInfo[MAXSIZE] = { 0 };
 	char szFile[MAXSIZE] = { 0 };
 	sprintf(szAdbPath, "%s%s", get_current_path(), ADB_ADB_NAME);
 	sprintf(shellComm, "%s kill-server", szAdbPath);
-	//sprintf(shellCommDevice, "%s devices", szAdbPath);
+	sprintf(shellCommDevice, "%s devices", szAdbPath);
+	sprintf(shellCommState, "%s get-state", szAdbPath);
 	sprintf(szFile, "%s/%s", APK_TEMP_PATH, "text");
-	sprintf(shellCommDevice, "%s devices > %s", szAdbPath, szFile);
-	while(!bExit)
+	//sprintf(shellCommDevice, "%s devices > %s", szAdbPath, szFile);
+    lock.Lock();
+    bExit = phone_is_online(szInfo, shellCommState);
+	while(!bExit && nCount<=10)
 	{
 		systemdroid(shellComm);
 		execstream(shellCommDevice, szInfo, sizeof(szInfo));
-		bExit = phone_is_online(szInfo);
+		//bExit = phone_is_online(szInfo);
+		bExit = phone_is_online(szInfo, shellCommState);
+		nCount++;
+		usleep(500);
 	}
+    lock.Unlock();
+    return bExit;
 //	while(systemdroid(shellComm)==0)
 //	{
 //		FILE *fpin;
@@ -131,6 +143,19 @@ int InterfaceFull::install_android_apk(char* szApk)
 	LogFile::write_sys_log(szInfo);
 	//systemdroid("exit");
 	return result;
+}
+
+bool InterfaceFull::phone_is_online(char* buf, char* cmd)
+{
+	char szInfo[ROWSIZE] = { 0 };
+	execstream(cmd, szInfo, sizeof(szInfo));
+	char* tmp = strchr(szInfo, '\n');
+	if(tmp != NULL)
+		*tmp = '\0';
+	if(!strcmp(szInfo, "device"))
+		return true;
+	else
+		return false;
 }
 
 int InterfaceFull::phone_is_online(char* buf)
