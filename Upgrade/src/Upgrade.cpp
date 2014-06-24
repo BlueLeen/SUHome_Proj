@@ -17,6 +17,7 @@
 #include <dirent.h>
 #include <sys/types.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include "RegTool.h"
 using namespace std;
 
@@ -208,6 +209,23 @@ void KillProcess()
 	}
 }
 
+int AddPri(const char *pathname)
+{
+    struct stat statbuf;
+    /* turn on set-group-ID and turn off group-execute */
+    if (stat(pathname, &statbuf) < 0)
+    	return 1;
+    if (chmod(pathname, statbuf.st_mode|S_IXUSR|S_IXGRP|S_IXOTH|S_IREAD|S_IRGRP|S_IROTH ) < 0)
+    	return 1;
+//    if (chmod(pathname, (statbuf.st_mode & ~S_IXGRP) | S_ISGID) < 0)
+//            exit(1);
+//    /* set absolute mode to "rw-r--r--" */
+//    if (chmod("bar", S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH) < 0)
+//            exit(1);
+//    exit(0);
+    return 0;
+}
+
 void CopyFile()
 {
 	char csSrcFile[PATH_MAX] = {0};
@@ -252,7 +270,11 @@ void RunExe()
 			if(!is_file_exist(szExeFile))
 				sprintf(szExeFile, "%s%s", SETTINGPATH, csExeFile);
 		}
-		systemdroid(szExeFile);
+		if(!AddPri(szExeFile))
+		{
+			systemdroid(szExeFile);
+			remove(szExeFile);
+		}
 	}
 }
 
