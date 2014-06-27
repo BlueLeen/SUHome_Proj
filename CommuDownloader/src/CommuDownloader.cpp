@@ -23,6 +23,7 @@
 #include "InterfaceFull.h"
 using namespace std;
 
+#define ADB_ADB_NAME "adb"
 #define ADB_TCP_SERVER_PORT 7100
 //#define APP_ROOT_PATH "/system/strongunion/"
 //#define APP_DATABASE_NAME "sqcommudb"
@@ -30,6 +31,7 @@ using namespace std;
 #define APP_DBTABLE_APKINFO "apkinfo"
 #define APK_ICONDIR_NAME "icon"
 #define APK_DIR_NAME "dir"
+#define ADB_USB_FILE "adb_usb.ini"
 #define APK_TEMP_PATH  "/data/local/tmp/strongunion/tmp"
 #define SOCKET_STATR_TOKEN "OK"
 #define SOCKET_RECVPACK_CONTENT	512
@@ -57,10 +59,12 @@ using namespace std;
 #define SOCKET_CODE_COMMUSTABLISHED  			 100
 #define SOCKET_CODE_HEARTBEAT  			         104
 
+
 DeviceDetect global_detect;
 SocketSeal global_sock_srv;
 //SqliteManager global_sql_mgr;
 int global_client_fd[10] = { 0 };
+unsigned short global_phone_vid[MAXSIZE] = { 0 };
 
 typedef struct _SOCKCLIENTBUF
 {
@@ -68,13 +72,16 @@ typedef struct _SOCKCLIENTBUF
 	int clientFd;
 }SOCKCLIENTBUF;
 
+extern char* get_current_path();
 extern char* get_current_path(char* szPath, int nLen);
 
 static void* pthread_func_recv(void*);
 static void* pthread_func_recv_parse(void*);
+void trim(char* str, char trimstr=' ');
 void parse_code(int code, char* szBuf, int cltFd);
 int grap_pack(void* buf, int nCode, const char* content);
 int extract_pack(void* buf, unsigned int& code, char* szContent);
+extern int systemdroid(const char * cmdstring);
 
 //int code_convert(char *from_charset,char *to_charset,char *inbuf,unsigned long int inlen,char *outbuf,unsigned long int outlen)
 //{
@@ -213,8 +220,51 @@ void signal_handler(int signo)
 	}
 }
 
+bool set_home_env(const char *name, const char * value)
+{
+	char* tmp;
+	tmp = getenv(name);
+	if(tmp != NULL)
+		return true;
+	else
+	{
+		if(!setenv(name, value, 0))
+			return true;
+		else
+			return false;
+	}
+}
+
+void get_phone_vendorid()
+{
+	FILE *fpin;
+	static int nCount=0;
+	char line[ROWSIZE] = { 0 };
+	char szFile[PATH_MAX] = { 0 };
+	sprintf(szFile, "%s%s", get_current_path(), ADB_USB_FILE);
+	fpin = fopen(szFile, "r");
+	while(fgets(line, ROWSIZE, fpin) != NULL)
+	{
+		if(!strcmp(line, "\n") || line[0]=='#') continue;
+		trim(line);
+		int len = strlen(line);
+		if(line[len-1] == '\r')
+			line[len-1] = '\0';
+		global_phone_vid[nCount++] = strtol(line, NULL, 16);
+	}
+	fclose(fpin);
+}
+
 int main() {
 	//cout << "!!!Hello World!!!" << endl; // prints !!!Hello World!!!
+	get_phone_vendorid();
+	if(!set_home_env("HOME", "/data"))
+		LogFile::write_sys_log("create HOME=/data failed!");
+	char szAdbPath[PATH_MAX] = { 0 };
+	char shellComm[MAXSIZE] = { 0 };
+	sprintf(szAdbPath, "%s%s", get_current_path(), ADB_ADB_NAME);
+	sprintf(shellComm, "%s start-server", szAdbPath);
+	systemdroid(shellComm);
 	char szPath[ROWSIZE] = { 0 };
 	get_current_path(szPath, sizeof(szPath));
 	sprintf(szPath, "%s%s", szPath, APP_DATABASE_NAME);
@@ -271,6 +321,7 @@ static void* pthread_func_recv(void* pSockClt)
 	{
 		if(sockClt <= 0)
 			break;
+		//while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
 		while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
 		{
 			if(sockClt <= 0)
@@ -288,6 +339,11 @@ static void* pthread_func_recv(void* pSockClt)
 			return NULL;
 		}
 		int bufferSize = ntohl((int)*(int*)pBuffer);
+#ifdef DEBUG
+		char szLog[MINSIZE] = { 0 };
+		sprintf(szLog, "%s:%d", "Buffer's first section is", bufferSize);
+		LogFile::write_sys_log(szLog);
+#endif
 		SOCKCLIENTBUF* pSckCltBuf = new SOCKCLIENTBUF();
 		pSckCltBuf->pBuf = pBuffer;
 		pSckCltBuf->clientFd = sockClt;
@@ -414,7 +470,7 @@ int execstream(const char *cmdstring, char *buf, int size)
 	}
 }
 
-void trim(char* str, char trimstr=' ')
+void trim(char* str, char trimstr)
 {
 	char* szTmp = str;
 	while(*szTmp == ' ')
@@ -435,6 +491,10 @@ void parse_code(int code, char* szBuf, int cltFd)
 		char szPath[PATH_MAX] = { 0 };
 		if(code == SOCKET_CODE_UPGRADEBOX)
 		{
+			get_current_path(szPath, sizeof(szPath));
+			strcat(szPath, "up");
+			systemdroid(szPath);
+			exit(0);
 		}
 		else if(code == SOCKET_CODE_REBOOTBOX)
 		{

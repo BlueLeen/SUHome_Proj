@@ -109,16 +109,102 @@ int SocketSeal::receive_socket_packs(char* szBuf, int nSize, int nClientSockfd)
 	return len;
 }
 
+//int SocketSeal::receive_buffer(int& nClientSockfd, void** pBuf)
+//{
+//	static int nFlag = 1;
+//	static int nRec = 0;
+//	static int fileSize = 0;
+//	unsigned char buf[RCVSIZE] = { 0 };
+//	static int len = 1;
+//	if(len <= 0)
+//	{
+//		close(nClientSockfd);
+//		nClientSockfd = -1;
+//		return 2;
+//	}
+//	else
+//		len=recv(nClientSockfd, buf, RCVSIZE, 0);
+//	if(nFlag)
+//	{
+//		fileSize = ntohl((int)(*(int*)buf));
+//		if(fileSize == 0 || len > 4000)
+//			return 2;
+//		nFlag = 0;
+//		*pBuf = malloc(fileSize);
+//#ifdef DEBUG
+//		char szLog[100] = { 0 };
+//		sprintf(szLog, "<receive_buffer>File Size:%d", fileSize);
+//		LogFile::write_sys_log(szLog);
+//#endif
+//	}
+//	memcpy(*pBuf+nRec, buf, len);
+//	nRec += len;
+//#ifdef DEBUG
+//		char szLog[100] = { 0 };
+//		sprintf(szLog, "<receive_buffer>File Receive Current Length:%d", nRec);
+//		LogFile::write_sys_log(szLog);
+//#endif
+//	if(nRec >= fileSize)
+//	{
+//		nFlag = 1;
+//		nRec = 0;
+//		return 0;
+//	}
+//	return 1;
+//}
+
+//int SocketSeal::receive_buffer(int nClientSockfd, void** pBuf)
+//{
+//	static int nFlag = 1;
+//	static int nRec = 0;
+//	static int fileSize = 0;
+//	unsigned char buf[RCVSIZE] = { 0 };
+//	int len=recv(nClientSockfd, buf, RCVSIZE, 0);
+//	if(nFlag)
+//	{
+//		fileSize = ntohl((int)(*(int*)buf));
+//		if(fileSize == 0 || len > 4000)
+//			return 2;
+//		nFlag = 0;
+//		*pBuf = malloc(fileSize);
+//#ifdef DEBUG
+//		char szLog[100] = { 0 };
+//		sprintf(szLog, "<receive_buffer>File Size:%d", fileSize);
+//		LogFile::write_sys_log(szLog);
+//#endif
+//	}
+//	memcpy(*pBuf+nRec, buf, len);
+//	nRec += len;
+//#ifdef DEBUG
+//		char szLog[100] = { 0 };
+//		sprintf(szLog, "<receive_buffer>File Receive Current Length:%d", nRec);
+//		LogFile::write_sys_log(szLog);
+//#endif
+//	if(nRec >= fileSize)
+//	{
+//		nFlag = 1;
+//		nRec = 0;
+//		return 0;
+//	}
+//	return 1;
+//}
+
 int SocketSeal::receive_buffer(int& nClientSockfd, void** pBuf)
 {
 	static int nFlag = 1;
 	static int nRec = 0;
 	static int fileSize = 0;
 	unsigned char buf[RCVSIZE] = { 0 };
-	static int len = 1;
+	//static int len = 1;
+	int len = 1;
 	if(len <= 0)
 	{
 		close(nClientSockfd);
+#ifdef DEBUG
+		char szLog[100] = { 0 };
+		sprintf(szLog, "%s:%d", "close client socket!", nClientSockfd);
+		LogFile::write_sys_log(szLog);
+#endif
 		nClientSockfd = -1;
 		return 2;
 	}
@@ -131,13 +217,15 @@ int SocketSeal::receive_buffer(int& nClientSockfd, void** pBuf)
 			return 2;
 		nFlag = 0;
 		*pBuf = malloc(fileSize);
+		if(*pBuf == NULL)
+			LogFile::write_sys_log("system have not enough memory space!");
 #ifdef DEBUG
 		char szLog[100] = { 0 };
 		sprintf(szLog, "<receive_buffer>File Size:%d", fileSize);
 		LogFile::write_sys_log(szLog);
 #endif
 	}
-	memcpy(*pBuf+nRec, buf, len);
+	memcpy((unsigned char*)(*pBuf)+nRec, buf, len);
 	nRec += len;
 #ifdef DEBUG
 		char szLog[100] = { 0 };

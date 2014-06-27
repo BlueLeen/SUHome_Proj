@@ -21,8 +21,8 @@
 #include "InterfaceFull.h"
 
 //#define APP_ROOT_PATH "/system/strongunion/"
-#define DEV_USB_DEV "/proc/bus/usb/devices"
-#define DEV_USB_FILE "usbinfo"
+#define DEV_USB_DEV 							"/proc/bus/usb/devices"
+#define DEV_USB_FILE 							"usbinfo"
 //#define DEV_USB_FILE "/home/leen/Desktop/new"
 #define ROWSIZE 200
 #define MAXSIZE 1024
@@ -33,6 +33,8 @@
 #define SOCKET_CODE_BOXWELL  	     			 104
 #define SOCKET_CODE_PHONENOTRECOGNIZED  	     105
 #define SOCKET_CODE_PHONEOPENUSBDEBUG  	     	 107
+#define SOCKET_CODE_UPANPLUGIN  	     	 	 108
+#define SOCKET_CODE_SDCARDPULLOUT  	     	 	 109
 
 extern void send_all_client_packs(char* buf, int size);
 extern int grap_pack(void* buf, int nCode, const char* content);
@@ -238,7 +240,7 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 			if(nState == 1)
 			{
 				unsigned long curTime = GetTickCount();
-				if(curTime - m_lastAddTime > 2000)
+				if(curTime - m_lastAddTime > 3000)
 				{
 					m_lastAddTime = curTime;
 					char* szText = strstr(buf, "@");
@@ -255,7 +257,7 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 			else if(nState == 2)
 			{
 				unsigned long curTime = GetTickCount();
-				if(curTime - m_lastChangeTime > 2000)
+				if(curTime - m_lastChangeTime > 3000)
 				{
 					m_lastChangeTime = curTime;
 //					pthread_create(&pt_recv, NULL, pthread_func_call, (void*)nState);
@@ -267,7 +269,7 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 			else if(nState == 3)
 			{
 				unsigned long curTime = GetTickCount();
-				if(curTime - m_lastRemoveTime > 2000)
+				if(curTime - m_lastRemoveTime > 3000)
 				{
 					m_lastRemoveTime = curTime;
 					pthread_create(&pt_recv, NULL, pthread_func_call, (void*)nState);
@@ -368,13 +370,23 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 //		memcpy(buf+8, content, ctnlen);
 //		*(int*)buf = htonl(ctnlen + 8);
 //		send_all_client_packs(buf, ctnlen+8);
-		int nLen = grap_pack(buf, SOCKET_CODE_PHONEPLUGIN, content);
-		send_all_client_packs(buf, nLen);
-		DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
+		if(strstr(devinfo.m_szManFac, "USB") || strstr(devinfo.m_szProduct, "USB") ||
+				strstr(devinfo.m_szManFac, "usb") || strstr(devinfo.m_szProduct, "usb"))
+		{
+			int nLen = grap_pack(buf, SOCKET_CODE_UPANPLUGIN, content);
+			send_all_client_packs(buf, nLen);
+			DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
+		}
+		else
+		{
+			int nLen = grap_pack(buf, SOCKET_CODE_PHONEPLUGIN, content);
+			send_all_client_packs(buf, nLen);
+			DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
 
-		bool bDebug = InterfaceFull::open_android_usbdebug();
-		nLen = grap_pack(buf, SOCKET_CODE_PHONEOPENUSBDEBUG, bDebug==true?"1":"2");
-		send_all_client_packs(buf, nLen);
+			bool bDebug = InterfaceFull::open_android_usbdebug();
+			nLen = grap_pack(buf, SOCKET_CODE_PHONEOPENUSBDEBUG, bDebug==true?"1":"2");
+			send_all_client_packs(buf, nLen);
+		}
 	}
 	else if(nState == 2)
 	{

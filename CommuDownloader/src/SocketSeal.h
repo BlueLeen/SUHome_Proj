@@ -18,6 +18,8 @@ public:
 	int accept_client_socket();
 	int send_socket_packs(char* szBuf, int nSize, int nClientSockfd);
 	int receive_socket_packs(char* szBuf, int nSize, int nClientSockfd);
+	//int receive_buffer(int nClientSockfd, void** pBuf);
+	//int receive_buffer(int& nClientSockfd, void** pBuf);
 	int receive_buffer(int& nClientSockfd, void** pBuf);
 	void close_client_socket(int nClientSockfd);
 	void close_server_socket();
