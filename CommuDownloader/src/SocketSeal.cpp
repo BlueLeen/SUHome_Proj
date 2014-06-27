@@ -195,23 +195,21 @@ int SocketSeal::receive_buffer(int& nClientSockfd, void** pBuf)
 	static int nRec = 0;
 	static int fileSize = 0;
 	unsigned char buf[RCVSIZE] = { 0 };
-	//static int len = 1;
-	int len = 1;
+//	static int len = 1;
+//	if(len <= 0)
+//	{
+//		return 2;
+//	}
+//	else
+//		len=recv(nClientSockfd, buf, RCVSIZE, 0);
+	int len=recv(nClientSockfd, buf, RCVSIZE, 0);
 	if(len <= 0)
 	{
-		close(nClientSockfd);
-#ifdef DEBUG
-		char szLog[100] = { 0 };
-		sprintf(szLog, "%s:%d", "close client socket!", nClientSockfd);
-		LogFile::write_sys_log(szLog);
-#endif
-		nClientSockfd = -1;
 		return 2;
 	}
-	else
-		len=recv(nClientSockfd, buf, RCVSIZE, 0);
 	if(nFlag)
 	{
+		nRec = 0;
 		fileSize = ntohl((int)(*(int*)buf));
 		if(fileSize == 0 || len > 4000)
 			return 2;
@@ -225,10 +223,15 @@ int SocketSeal::receive_buffer(int& nClientSockfd, void** pBuf)
 		LogFile::write_sys_log(szLog);
 #endif
 	}
+#ifdef DEBUG
+		char szLog[100] = { 0 };
+		sprintf(szLog, "nRec:%d", nRec);
+		LogFile::write_sys_log(szLog);
+#endif
 	memcpy((unsigned char*)(*pBuf)+nRec, buf, len);
 	nRec += len;
 #ifdef DEBUG
-		char szLog[100] = { 0 };
+		//char szLog[100] = { 0 };
 		sprintf(szLog, "<receive_buffer>File Receive Current Length:%d", nRec);
 		LogFile::write_sys_log(szLog);
 #endif

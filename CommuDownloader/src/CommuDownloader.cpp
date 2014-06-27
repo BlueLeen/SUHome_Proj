@@ -120,6 +120,11 @@ void add_client_fd(int nClientFd)
 		i++;
 	}
 	global_client_fd[i] = nClientFd;
+#ifdef DEBUG
+		char szLog[MINSIZE] = { 0 };
+		sprintf(szLog, "add the global client file descriptor,%d:%d!", i, global_client_fd[i]);
+		LogFile::write_sys_log(szLog);
+#endif
 }
 
 void remove_client_fd(int nClientFd)
@@ -129,6 +134,11 @@ void remove_client_fd(int nClientFd)
 	{
 		i++;
 	}
+#ifdef DEBUG
+		char szLog[MINSIZE] = { 0 };
+		sprintf(szLog, "remove the global client file descriptor,%d:%d!", i, global_client_fd[i]);
+		LogFile::write_sys_log(szLog);
+#endif
 	global_client_fd[i] = 0;
 }
 
@@ -300,6 +310,7 @@ int main() {
 			add_client_fd(sockClt);
 			//global_sock_srv.receive_socket_packs(buf, BUFSIZ, sockClt);
 			pthread_create(&pt_recv, NULL, pthread_func_recv, &sockClt);
+			pthread_join(pt_recv,NULL);
 //#ifdef DEBUG
 //			LogFile::write_sys_log(buf, APP_ROOT_PATH);
 //#endif
@@ -324,7 +335,8 @@ static void* pthread_func_recv(void* pSockClt)
 		//while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
 		while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
 		{
-			if(sockClt <= 0)
+			//if(sockClt <= 0)
+			if(ret == 2)
 				break;
 		}
 		if(ret == 2)
@@ -333,10 +345,10 @@ static void* pthread_func_recv(void* pSockClt)
 			remove_client_fd(sockClt);
 	#ifdef DEBUG
 			char szLog[MINSIZE] = { 0 };
-			sprintf(szLog, "%s:%d", "close client socket!", sockClt);
+			sprintf(szLog, "%s:%d!", "close client socket", sockClt);
 			LogFile::write_sys_log(szLog);
 	#endif
-			return NULL;
+			break;
 		}
 		int bufferSize = ntohl((int)*(int*)pBuffer);
 #ifdef DEBUG
@@ -348,8 +360,11 @@ static void* pthread_func_recv(void* pSockClt)
 		pSckCltBuf->pBuf = pBuffer;
 		pSckCltBuf->clientFd = sockClt;
 		if(bufferSize > 0)
+		{
 			//pthread_create(&pt_recv_parse, NULL, pthread_func_recv_parse, pBuffer);
 			pthread_create(&pt_recv_parse, NULL, pthread_func_recv_parse, pSckCltBuf);
+			pthread_join(pt_recv_parse,NULL);
+		}
 	}
 
 	return NULL;
