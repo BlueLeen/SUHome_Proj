@@ -26,6 +26,8 @@ int extract_pack(void* buf)
 	unsigned int len = ntohl(*(int*)buf);
 	unsigned int code = ntohl(*(int*)((unsigned char*)buf+4));
 	char szContent[SOCKET_RECVPACK_CONTENT] = { 0 };
+	if(code == 104)
+		return len;
 	if(len > 8)
 	{
 		memcpy(szContent, (unsigned char*)buf+8, len-8);
