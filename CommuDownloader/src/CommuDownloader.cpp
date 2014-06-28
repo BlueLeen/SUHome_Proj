@@ -142,6 +142,47 @@ void remove_client_fd(int nClientFd)
 	global_client_fd[i] = 0;
 }
 
+static void* pthread_func_listen(void* pSockClt)
+{
+	pthread_detach(pthread_self());
+	pthread_t pt_recv_parse = 0;
+	void* pBuffer = NULL;
+	int sockClt = *(int*)pSockClt;
+	static int ret = 0;
+	while(true)
+	{
+		if(sockClt <= 0)
+			break;
+		//while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
+		while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
+		{
+			//if(sockClt <= 0)
+			if(ret == 2)
+				break;
+		}
+		if(ret == 2)
+		{
+			global_sock_srv.close_client_socket(sockClt);
+			remove_client_fd(sockClt);
+	#ifdef DEBUG
+			char szLog[MINSIZE] = { 0 };
+			sprintf(szLog, "%s:%d!", "remove client socket", sockClt);
+			LogFile::write_sys_log(szLog);
+	#endif
+			break;
+		}
+	}
+	delete (int*)pSockClt;
+	return NULL;
+}
+
+void listen_client_fd(int nClientFd)
+{
+	pthread_t pt_recv = 0;
+	pthread_create(&pt_recv, NULL, pthread_func_listen, new int(nClientFd));
+	pthread_join(pt_recv,NULL);
+}
+
 unsigned long get_file_size(const char *path)
 {
     unsigned long filesize = -1;
@@ -252,6 +293,8 @@ void get_phone_vendorid()
 	char line[ROWSIZE] = { 0 };
 	char szFile[PATH_MAX] = { 0 };
 	sprintf(szFile, "%s%s", get_current_path(), ADB_USB_FILE);
+	if(!is_file_exist(szFile))
+		return;
 	fpin = fopen(szFile, "r");
 	while(fgets(line, ROWSIZE, fpin) != NULL)
 	{
@@ -275,48 +318,58 @@ int main() {
 	sprintf(szAdbPath, "%s%s", get_current_path(), ADB_ADB_NAME);
 	sprintf(shellComm, "%s start-server", szAdbPath);
 	systemdroid(shellComm);
-	char szPath[ROWSIZE] = { 0 };
-	get_current_path(szPath, sizeof(szPath));
-	sprintf(szPath, "%s%s", szPath, APP_DATABASE_NAME);
+//	char szPath[ROWSIZE] = { 0 };
+//	get_current_path(szPath, sizeof(szPath));
+//	sprintf(szPath, "%s%s", szPath, APP_DATABASE_NAME);
+//#ifdef DEBUG
+//	LogFile::write_sys_log(szPath);
+//#endif
 	set_timer();
 	signal(SIGALRM, signal_handler);
-#ifdef DEBUG
-	LogFile::write_sys_log(szPath);
-#endif
 	//global_sql_mgr.open_sqlite_db(szPath);
 //	global_sql_mgr.create_sqlite_table(APP_DBTABLE_APKINFO, "apkid INTEGER, name VARCHAR(50),"
 //			"mode INTEGER, vername VARCHAR(20), pkgname VARCHAR(50), filesize REAL,"
 //			"iconpath VARCHAR(20)");
 	//global_sql_mgr.create_sqlite_table(APP_DBTABLE_APKINFO, "apkid INTEGER, name VARCHAR(50)");
 	global_detect.plug_dev_detect();
-	global_sock_srv.start_server_socket(ADB_TCP_SERVER_PORT);
+	int sockSrv = global_sock_srv.start_server_socket(ADB_TCP_SERVER_PORT);
 	//wait for the client to connect
+	pid_t pid;
 	while(1)
 	{
 		int sockClt;
 		char buf[BUFSIZ] = { 0 }; //数据传送的缓冲区
-		int len = 0;
-		*(int*)(buf+4) = htonl(SOCKET_CODE_COMMUSTABLISHED);
-		//g2u(SOCKET_STATR_TOKEN, strlen(SOCKET_STATR_TOKEN), buf+8, len);
-		len = sizeof(SOCKET_STATR_TOKEN);
-		memcpy(buf+8, SOCKET_STATR_TOKEN, len);
-		*(int*)buf = htonl(len+8);
+//		int len = 0;
+//		*(int*)(buf+4) = htonl(SOCKET_CODE_COMMUSTABLISHED);
+//		len = sizeof(SOCKET_STATR_TOKEN);
+//		memcpy(buf+8, SOCKET_STATR_TOKEN, len);
+//		*(int*)buf = htonl(len+8);
+		int len = grap_pack(buf, SOCKET_CODE_COMMUSTABLISHED, SOCKET_STATR_TOKEN);
 		sockClt = global_sock_srv.accept_client_socket();
-		if (sockClt != 0)
+		add_client_fd(sockClt);
+		if((pid = fork()) == 0)
 		{
-			pthread_t pt_recv = 0;
-			//void* pBuffer = NULL;
-			global_sock_srv.send_socket_packs(buf, len+8, sockClt);
-			add_client_fd(sockClt);
-			//global_sock_srv.receive_socket_packs(buf, BUFSIZ, sockClt);
-			pthread_create(&pt_recv, NULL, pthread_func_recv, &sockClt);
-			pthread_join(pt_recv,NULL);
-//#ifdef DEBUG
-//			LogFile::write_sys_log(buf, APP_ROOT_PATH);
-//#endif
+			close(sockSrv);
+			if (sockClt != 0)
+			{
+				pthread_t pt_recv = 0;
+				//void* pBuffer = NULL;
+				//global_sock_srv.send_socket_packs(buf, len+8, sockClt);
+				global_sock_srv.send_socket_packs(buf, len, sockClt);
+				//add_client_fd(sockClt);
+				//global_sock_srv.receive_socket_packs(buf, BUFSIZ, sockClt);
+				pthread_create(&pt_recv, NULL, pthread_func_recv, new int(sockClt));
+				pthread_join(pt_recv,NULL);
+	//#ifdef DEBUG
+	//			LogFile::write_sys_log(buf, APP_ROOT_PATH);
+	//#endif
+			}
+			exit(0);
 		}
+		//listen_client_fd(sockClt);
+		//close(sockClt);
 	}
-	//global_sock_srv.close_server_socket();
+	global_sock_srv.close_server_socket();
 	//global_sql_mgr.close_sqlite_db();
 	return 0;
 }
@@ -342,7 +395,7 @@ static void* pthread_func_recv(void* pSockClt)
 		if(ret == 2)
 		{
 			global_sock_srv.close_client_socket(sockClt);
-			remove_client_fd(sockClt);
+			//remove_client_fd(sockClt);
 	#ifdef DEBUG
 			char szLog[MINSIZE] = { 0 };
 			sprintf(szLog, "%s:%d!", "close client socket", sockClt);
@@ -366,7 +419,7 @@ static void* pthread_func_recv(void* pSockClt)
 			pthread_join(pt_recv_parse,NULL);
 		}
 	}
-
+	delete (int*)pSockClt;
 	return NULL;
 }
 
@@ -558,7 +611,10 @@ void parse_code(int code, char* szBuf, int cltFd)
 		{
 			char szApkBuf[MAXSIZE];
 			char apklist[200][TINYSIZE];
-			int count = get_all_apk(APK_TEMP_PATH, apklist);
+			char szApkPath[PATH_MAX] = { 0 };
+			get_current_path(szPath, sizeof(szPath));
+			sprintf(szApkPath, "%s%s", szPath, APK_DIR_NAME);
+			int count = get_all_apk(szApkPath, apklist);
 			memset(szApkBuf, 0, sizeof(szApkBuf));
 			strcpy(szApkBuf, apklist[0]);
 			int i;

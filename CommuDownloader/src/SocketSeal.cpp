@@ -37,7 +37,7 @@ SocketSeal::~SocketSeal() {
 	close_server_socket();
 }
 
-void SocketSeal::start_server_socket(int nConnPort)
+int SocketSeal::start_server_socket(int nConnPort)
 {
     struct sockaddr_in server_addr;
     bzero(&server_addr,sizeof(server_addr)); //把一段内存区的内容全部设置为0
@@ -46,14 +46,17 @@ void SocketSeal::start_server_socket(int nConnPort)
     server_addr.sin_addr.s_addr = htons(INADDR_ANY);
     server_addr.sin_port = htons(nConnPort);
     /*创建服务器端套接字--IPv4协议，面向连接通信，TCP协议*/
-	if((m_sockSrvfd=socket(PF_INET,SOCK_STREAM,0))<0)
+	if((m_sockSrvfd=socket(AF_INET,SOCK_STREAM,0))<0)
 	{
 		perror("socket");
 #ifdef DEBUG
 		LogFile::write_sys_log("create server socket failed!");
 #endif
-		return;
+		return 0;
 	}
+    // 设置socket选项，这是可选的，可以避免服务器程序结束后无法快速重新运行
+    int val=1;
+    setsockopt(m_sockSrvfd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val));
 	/*将套接字绑定到服务器的网络地址上*/
     if( bind(m_sockSrvfd,(struct sockaddr*)&server_addr,sizeof(server_addr)))
     {
@@ -63,7 +66,7 @@ void SocketSeal::start_server_socket(int nConnPort)
         sprintf(szLog, "server bind port:%d failed!", nConnPort);
 		LogFile::write_sys_log(szLog);
 #endif
-        return;
+        return 0;
     }
     //server_socket用于监听
     if ( listen(m_sockSrvfd, LENGTH_OF_LISTEN_QUEUE) )
@@ -72,8 +75,9 @@ void SocketSeal::start_server_socket(int nConnPort)
 #ifdef DEBUG
 		LogFile::write_sys_log("server listen failed!");
 #endif
-        return;
+        return 0;
     }
+    return m_sockSrvfd;
 }
 
 int SocketSeal::accept_client_socket()
@@ -109,99 +113,12 @@ int SocketSeal::receive_socket_packs(char* szBuf, int nSize, int nClientSockfd)
 	return len;
 }
 
-//int SocketSeal::receive_buffer(int& nClientSockfd, void** pBuf)
-//{
-//	static int nFlag = 1;
-//	static int nRec = 0;
-//	static int fileSize = 0;
-//	unsigned char buf[RCVSIZE] = { 0 };
-//	static int len = 1;
-//	if(len <= 0)
-//	{
-//		close(nClientSockfd);
-//		nClientSockfd = -1;
-//		return 2;
-//	}
-//	else
-//		len=recv(nClientSockfd, buf, RCVSIZE, 0);
-//	if(nFlag)
-//	{
-//		fileSize = ntohl((int)(*(int*)buf));
-//		if(fileSize == 0 || len > 4000)
-//			return 2;
-//		nFlag = 0;
-//		*pBuf = malloc(fileSize);
-//#ifdef DEBUG
-//		char szLog[100] = { 0 };
-//		sprintf(szLog, "<receive_buffer>File Size:%d", fileSize);
-//		LogFile::write_sys_log(szLog);
-//#endif
-//	}
-//	memcpy(*pBuf+nRec, buf, len);
-//	nRec += len;
-//#ifdef DEBUG
-//		char szLog[100] = { 0 };
-//		sprintf(szLog, "<receive_buffer>File Receive Current Length:%d", nRec);
-//		LogFile::write_sys_log(szLog);
-//#endif
-//	if(nRec >= fileSize)
-//	{
-//		nFlag = 1;
-//		nRec = 0;
-//		return 0;
-//	}
-//	return 1;
-//}
-
-//int SocketSeal::receive_buffer(int nClientSockfd, void** pBuf)
-//{
-//	static int nFlag = 1;
-//	static int nRec = 0;
-//	static int fileSize = 0;
-//	unsigned char buf[RCVSIZE] = { 0 };
-//	int len=recv(nClientSockfd, buf, RCVSIZE, 0);
-//	if(nFlag)
-//	{
-//		fileSize = ntohl((int)(*(int*)buf));
-//		if(fileSize == 0 || len > 4000)
-//			return 2;
-//		nFlag = 0;
-//		*pBuf = malloc(fileSize);
-//#ifdef DEBUG
-//		char szLog[100] = { 0 };
-//		sprintf(szLog, "<receive_buffer>File Size:%d", fileSize);
-//		LogFile::write_sys_log(szLog);
-//#endif
-//	}
-//	memcpy(*pBuf+nRec, buf, len);
-//	nRec += len;
-//#ifdef DEBUG
-//		char szLog[100] = { 0 };
-//		sprintf(szLog, "<receive_buffer>File Receive Current Length:%d", nRec);
-//		LogFile::write_sys_log(szLog);
-//#endif
-//	if(nRec >= fileSize)
-//	{
-//		nFlag = 1;
-//		nRec = 0;
-//		return 0;
-//	}
-//	return 1;
-//}
-
 int SocketSeal::receive_buffer(int& nClientSockfd, void** pBuf)
 {
 	static int nFlag = 1;
 	static int nRec = 0;
 	static int fileSize = 0;
 	unsigned char buf[RCVSIZE] = { 0 };
-//	static int len = 1;
-//	if(len <= 0)
-//	{
-//		return 2;
-//	}
-//	else
-//		len=recv(nClientSockfd, buf, RCVSIZE, 0);
 	int len=recv(nClientSockfd, buf, RCVSIZE, 0);
 	if(len <= 0)
 	{

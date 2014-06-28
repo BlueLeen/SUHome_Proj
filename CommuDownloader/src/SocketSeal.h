@@ -14,7 +14,7 @@ public:
 	SocketSeal(int nConnPort);
 	virtual ~SocketSeal();
 
-	void start_server_socket(int nConnPort);
+	int start_server_socket(int nConnPort);
 	int accept_client_socket();
 	int send_socket_packs(char* szBuf, int nSize, int nClientSockfd);
 	int receive_socket_packs(char* szBuf, int nSize, int nClientSockfd);
