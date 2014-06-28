@@ -22,8 +22,11 @@ public:
 
 	void plug_dev_detect();
 
+	static void send_usb_info();
+
 private:
 	static bool m_bGetDeviceFileMethod;
+	static bool m_bPlugedDevice;
 
 	static unsigned long m_lastAddTime;
 	static unsigned long m_lastChangeTime;

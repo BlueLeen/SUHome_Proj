@@ -38,6 +38,7 @@
 
 extern void send_all_client_packs(char* buf, int size);
 extern int grap_pack(void* buf, int nCode, const char* content);
+extern bool is_file_exist(const char *path);
 
 // 返回自系统开机以来的毫秒数（tick）
 unsigned long GetTickCount()
@@ -139,6 +140,7 @@ char* get_temp_path()
 //}
 
 bool DeviceDetect::m_bGetDeviceFileMethod = false;
+bool DeviceDetect::m_bPlugedDevice = false;
 
 //typedef unsigned long int pthread_t;
 unsigned long DeviceDetect::m_nUsbFileSize = 0;
@@ -213,6 +215,11 @@ void DeviceDetect::plug_dev_detect() {
 	DeviceDetect::m_lastAddTime = GetTickCount();
 	DeviceDetect::m_lastChangeTime = GetTickCount();
 	DeviceDetect::m_lastRemoveTime = GetTickCount();
+	if(is_file_exist(DEV_USB_DEV))
+		DeviceDetect::m_bGetDeviceFileMethod = true;
+	else
+		DeviceDetect::m_bGetDeviceFileMethod = false;
+	DeviceDetect::m_bPlugedDevice = false;
 	pthread_create(&pt_plug, NULL, pthread_func_plug, NULL);
 }
 
@@ -339,6 +346,7 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 	unsigned long nState = (unsigned long)ptr;
 	if(nState == 1)
 	{
+		m_bPlugedDevice = true;
 		DeviceInfo devinfo;
 		//char szPath[ROWSIZE] = { 0 };
 		char buf[MAXSIZE] = { 0 };
@@ -394,6 +402,7 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 	}
 	else if(nState == 3)
 	{
+		m_bPlugedDevice = false;
 		char buf[MAXSIZE] = { 0 };
 //		*(int*)(buf+4) = htonl(SOCKET_CODE_PHONEPULLOUT);
 //		*(char*)(buf+8) = ' ';
@@ -407,4 +416,39 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 	//delete pDev;
 
 	return 0;
+}
+
+void DeviceDetect::send_usb_info()
+{
+	if(m_bPlugedDevice == true)
+	{
+		char buf[MAXSIZE] = { 0 };
+		char content[ROWSIZE] = { 0 };
+		DeviceInfo devinfo;
+		devinfo.get_dev_info(buf, m_szAddTextPath);
+		memset(buf, 0, sizeof(buf));
+		sprintf(content, "%s_%s_%s %s_%s", devinfo.m_szVid, devinfo.m_szPid, devinfo.m_szManFac,
+				devinfo.m_szProduct, devinfo.m_szImei);
+#ifdef DEBUG
+		char szLog[ROWSIZE] = { 0 };
+		sprintf(szLog, "get:%s:end", content);
+		LogFile::write_sys_log(szLog);
+#endif
+		if(strstr(devinfo.m_szManFac, "USB") || strstr(devinfo.m_szProduct, "USB") ||
+				strstr(devinfo.m_szManFac, "usb") || strstr(devinfo.m_szProduct, "usb"))
+		{
+			int nLen = grap_pack(buf, SOCKET_CODE_UPANPLUGIN, content);
+			send_all_client_packs(buf, nLen);
+			DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
+		}
+		else
+		{
+			int nLen = grap_pack(buf, SOCKET_CODE_PHONEPLUGIN, content);
+			send_all_client_packs(buf, nLen);
+			DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
+			bool bDebug = InterfaceFull::open_android_usbdebug();
+			nLen = grap_pack(buf, SOCKET_CODE_PHONEOPENUSBDEBUG, bDebug==true?"1":"2");
+			send_all_client_packs(buf, nLen);
+		}
+	}
 }

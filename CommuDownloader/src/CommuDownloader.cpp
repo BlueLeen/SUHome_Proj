@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <iconv.h>
 #include <string.h>
+#include <netinet/tcp.h>
 #include <netinet/in.h>
 #include <pthread.h>
 #include <limits.h>
@@ -102,13 +103,33 @@ extern int systemdroid(const char * cmdstring);
 //	return code_convert("gb2312","utf-8",inbuf,inlen,outbuf,outlen);
 //}
 
+bool SocketConnected(int sock) {
+	if (sock <= 0)
+		return 0;
+	struct tcp_info info;
+	int len = sizeof(info);
+	getsockopt(sock, IPPROTO_TCP, TCP_INFO, &info, (socklen_t *) &len);
+	if ((info.tcpi_state == TCP_ESTABLISHED)) {
+		//myprintf("socket connected\n");
+		return true;
+	} else {
+		//myprintf("socket disconnected\n");
+		return false;
+	}
+}
+
 void send_all_client_packs(char* buf, int size)
 {
 	int i;
 	for(i=0; i<10; i++)
 	{
 		if(global_client_fd[i] != 0)
-			global_sock_srv.send_socket_packs(buf, size, global_client_fd[i]);
+		{
+			if(SocketConnected(global_client_fd[i]))
+				global_sock_srv.send_socket_packs(buf, size, global_client_fd[i]);
+			else
+				global_client_fd[i] = 0;
+		}
 	}
 }
 
@@ -356,6 +377,7 @@ int main() {
 				//void* pBuffer = NULL;
 				//global_sock_srv.send_socket_packs(buf, len+8, sockClt);
 				global_sock_srv.send_socket_packs(buf, len, sockClt);
+				global_detect.send_usb_info();
 				//add_client_fd(sockClt);
 				//global_sock_srv.receive_socket_packs(buf, BUFSIZ, sockClt);
 				pthread_create(&pt_recv, NULL, pthread_func_recv, new int(sockClt));
@@ -396,6 +418,7 @@ static void* pthread_func_recv(void* pSockClt)
 		{
 			global_sock_srv.close_client_socket(sockClt);
 			//remove_client_fd(sockClt);
+			shutdown(sockClt, SHUT_RDWR);
 	#ifdef DEBUG
 			char szLog[MINSIZE] = { 0 };
 			sprintf(szLog, "%s:%d!", "close client socket", sockClt);
