@@ -38,7 +38,7 @@
 
 extern void send_all_client_packs(char* buf, int size);
 extern int grap_pack(void* buf, int nCode, const char* content);
-extern bool is_file_exist(const char *path);
+//extern bool is_file_exist(const char *path);
 
 // 返回自系统开机以来的毫秒数（tick）
 unsigned long GetTickCount()
@@ -215,10 +215,11 @@ void DeviceDetect::plug_dev_detect() {
 	DeviceDetect::m_lastAddTime = GetTickCount();
 	DeviceDetect::m_lastChangeTime = GetTickCount();
 	DeviceDetect::m_lastRemoveTime = GetTickCount();
-	if(is_file_exist(DEV_USB_DEV))
-		DeviceDetect::m_bGetDeviceFileMethod = true;
-	else
-		DeviceDetect::m_bGetDeviceFileMethod = false;
+//	if(is_file_exist(DEV_USB_DEV))
+//		DeviceDetect::m_bGetDeviceFileMethod = true;
+//	else
+//		DeviceDetect::m_bGetDeviceFileMethod = false;
+	DeviceDetect::m_bGetDeviceFileMethod = false;
 	DeviceDetect::m_bPlugedDevice = false;
 	pthread_create(&pt_plug, NULL, pthread_func_plug, NULL);
 }

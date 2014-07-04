@@ -51,6 +51,7 @@ bool InterfaceFull::open_android_usbdebug()
 	sprintf(shellCommState, "%s get-state", szAdbPath);
 	sprintf(szFile, "%s/%s", APK_TEMP_PATH, "text");
 	//sprintf(shellCommDevice, "%s devices > %s", szAdbPath, szFile);
+	sleep(3);
     lock.Lock();
     bExit = phone_is_online(szInfo, shellCommState);
 	while(!bExit && nCount<=10)
@@ -152,6 +153,11 @@ bool InterfaceFull::phone_is_online(char* buf, char* cmd)
 	char* tmp = strchr(szInfo, '\n');
 	if(tmp != NULL)
 		*tmp = '\0';
+#ifdef DEBUG
+		char szLog[ROWSIZE] = { 0 };
+		sprintf(szLog, "The phone's state is:%s", szInfo);
+		LogFile::write_sys_log(szLog);
+#endif
 	if(!strcmp(szInfo, "device"))
 		return true;
 	else

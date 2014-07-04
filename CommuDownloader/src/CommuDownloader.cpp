@@ -17,6 +17,7 @@
 #include <dirent.h>
 #include <sys/time.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include "SocketSeal.h"
 #include "LogFile.h"
 #include "DeviceDetect.h"
@@ -279,7 +280,7 @@ void signal_handler(int signo)
 		char buf[MAXSIZE] = { 0 };
 		int nLen = grap_pack(buf, SOCKET_CODE_HEARTBEAT, NULL);
 		send_all_client_packs(buf, nLen);
-#ifdef DEBUG
+#ifdef HEARTBEAT
 		char szLog[MINSIZE] = { 0 };
 		sprintf(szLog, "send heartbeat instruction once minute!");
 		LogFile::write_sys_log(szLog);
@@ -368,9 +369,14 @@ int main() {
 		int len = grap_pack(buf, SOCKET_CODE_COMMUSTABLISHED, SOCKET_STATR_TOKEN);
 		sockClt = global_sock_srv.accept_client_socket();
 		add_client_fd(sockClt);
+
+#ifndef ONECLIENT
 		if((pid = fork()) == 0)
+#endif
 		{
+#ifdef ONECLIENT
 			close(sockSrv);
+#endif
 			if (sockClt != 0)
 			{
 				pthread_t pt_recv = 0;
@@ -388,6 +394,7 @@ int main() {
 			}
 			exit(0);
 		}
+
 		//listen_client_fd(sockClt);
 		//close(sockClt);
 	}
@@ -574,6 +581,18 @@ void trim(char* str, char trimstr)
 	*(szTmp+1) = '\0';
 }
 
+int add_pri(const char *pathname)
+{
+    struct stat statbuf;
+    /* turn on set-group-ID and turn off group-execute */
+    if (stat(pathname, &statbuf) < 0)
+    	return 1;
+    if (chmod(pathname, statbuf.st_mode|S_IXUSR|S_IXGRP|S_IXOTH|S_IREAD|S_IRGRP|S_IROTH
+    		|S_IWUSR|S_IWGRP|S_IWOTH) < 0)
+    	return 1;
+    return 0;
+}
+
 void parse_code(int code, char* szBuf, int cltFd)
 {
 	try
@@ -684,7 +703,7 @@ void parse_code(int code, char* szBuf, int cltFd)
 	#endif
 			char szApkPath[PATH_MAX] = { 0 };
 			sprintf(szApkPath, "%s/%s", APK_TEMP_PATH, coninfo[0]);
-			if(!is_file_exist(szApkPath))
+			if(!is_file_exist(szApkPath) || add_pri(szApkPath)!=0)
 			{
 	//			*(int*)buf = htonl(9);
 	//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
