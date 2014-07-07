@@ -51,9 +51,14 @@ bool InterfaceFull::open_android_usbdebug()
 	sprintf(shellCommState, "%s get-state", szAdbPath);
 	sprintf(szFile, "%s/%s", APK_TEMP_PATH, "text");
 	//sprintf(shellCommDevice, "%s devices > %s", szAdbPath, szFile);
-	sleep(3);
     lock.Lock();
-    bExit = phone_is_online(szInfo, shellCommState);
+    for(int i=0; i<5; i++)
+    {
+    	bExit = phone_is_online(szInfo, shellCommState);
+    	if(bExit)
+    		break;
+    	sleep(1);
+    }
 	while(!bExit && nCount<=10)
 	{
 		systemdroid(shellComm);

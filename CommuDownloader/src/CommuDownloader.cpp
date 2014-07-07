@@ -474,7 +474,7 @@ static void* pthread_func_recv_parse(void* pSckCltBuf)
 	return NULL;
 }
 
-void extract_content_info(const char* content, char (*field)[MINSIZE], int count, char separator='_')
+int extract_content_info(const char* content, char (*field)[MINSIZE], int count, char separator='_')
 {
 	int i;
 	char* tmp = (char*)content;
@@ -488,6 +488,7 @@ void extract_content_info(const char* content, char (*field)[MINSIZE], int count
 		field++;
 	}
 	strcpy((char*)field, tmp);
+	return i+1;
 }
 
 int grap_pack(void* buf, int nCode, const char* content)
@@ -692,51 +693,70 @@ void parse_code(int code, char* szBuf, int cltFd)
 			//char sqltext[ROWSIZE] = { 0 };
 			//char coninfo[4][MINSIZE];
 			//extract_content_info(szBuf, coninfo, 4);
-			char coninfo[3][MINSIZE];
-			extract_content_info(szBuf, coninfo, 3);
+			char coninfo[100][MINSIZE];
+			int nCount = extract_content_info(szBuf, coninfo, 100);
 			//sprintf(sqltext, "%s, '%s'", coninfo[0], coninfo[1]);
 	#ifdef DEBUG
 			char szLog[MINSIZE] = { 0 };
-			sprintf(szLog, "The code is:%d,The content's %d fields value is:%s %s %s", SOCKET_CODE_ADDBOXAPK, 3,
-					coninfo[0], coninfo[1], coninfo[2]);
+			sprintf(szLog, "The code is:%d,The content's %d fields value is:", SOCKET_CODE_ADDBOXAPK, nCount);
+			for(int i=0; i<nCount; i++)
+				sprintf(szLog, "%s %s", szLog, coninfo[i]);
 			LogFile::write_sys_log(szLog);
 	#endif
 			char szApkPath[PATH_MAX] = { 0 };
-			sprintf(szApkPath, "%s/%s", APK_TEMP_PATH, coninfo[0]);
-			if(!is_file_exist(szApkPath) || add_pri(szApkPath)!=0)
+			char szContent[ROWSIZE] = { 0 };
+			for(int i=0; i<nCount; i++)
 			{
-	//			*(int*)buf = htonl(9);
-	//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
-	//			*(char*)(buf+8) = '2';
-	//			global_sock_srv.send_socket_packs(buf, 9, cltFd);
-				int nLen = grap_pack(buf, code, "2");
-				global_sock_srv.send_socket_packs(buf, nLen, cltFd);
-				return;
+				sprintf(szApkPath, "%s/%s", APK_TEMP_PATH, coninfo[i]);
+				if(!is_file_exist(szApkPath) || add_pri(szApkPath)!=0)
+				{
+		//			*(int*)buf = htonl(9);
+		//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
+		//			*(char*)(buf+8) = '2';
+		//			global_sock_srv.send_socket_packs(buf, 9, cltFd);
+					if(i == 0)
+						sprintf(szContent, "%s_%s", coninfo[i], "2");
+					else
+						sprintf(szContent, "%s_%s_%s", szContent, coninfo[i], "2");
+					continue;
+	//				int nLen = grap_pack(buf, code, "2");
+	//				global_sock_srv.send_socket_packs(buf, nLen, cltFd);
+    //				return;
+				}
+				char szApkFullPath[PATH_MAX] = { 0 };
+				get_current_path(szPath, sizeof(szPath));
+				sprintf(szApkFullPath, "%s%s/%s", szPath, APK_DIR_NAME, coninfo[i]);
+				//if(!global_sql_mgr.insert_sqlite_table(APP_DBTABLE_APKINFO, sqltext))
+				if(!rename(szApkPath, szApkFullPath))
+				{
+					remove(szApkFullPath);
+		//			*(int*)buf = htonl(9);
+		//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
+		//			*(char*)(buf+8) = '2';
+		//			global_sock_srv.send_socket_packs(buf, 9, cltFd);
+					if(i == 0)
+						sprintf(szContent, "%s_%s", coninfo[i], "2");
+					else
+						sprintf(szContent, "%s_%s_%s", szContent, coninfo[i], "2");
+//					int nLen = grap_pack(buf, code, "2");
+//					global_sock_srv.send_socket_packs(buf, nLen, cltFd);
+				}
+				else
+				{
+		//			*(int*)buf = htonl(9);
+		//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
+		//			*(char*)(buf+8) = '1';
+		//			global_sock_srv.send_socket_packs(buf, 9, cltFd);
+					if(i == 0)
+						sprintf(szContent, "%s_%s", coninfo[i], "1");
+					else
+						sprintf(szContent, "%s_%s_%s", szContent, coninfo[i], "1");
+//					int nLen = grap_pack(buf, code, "1");
+//					global_sock_srv.send_socket_packs(buf, nLen, cltFd);
+				}
 			}
-			char szApkFullPath[PATH_MAX] = { 0 };
-			get_current_path(szPath, sizeof(szPath));
-			sprintf(szApkFullPath, "%s%s/%s", szPath, APK_DIR_NAME, coninfo[0]);
-			rename(szApkPath, szApkFullPath);
-			//if(!global_sql_mgr.insert_sqlite_table(APP_DBTABLE_APKINFO, sqltext))
-			if(false)
-			{
-				remove(szApkFullPath);
-	//			*(int*)buf = htonl(9);
-	//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
-	//			*(char*)(buf+8) = '2';
-	//			global_sock_srv.send_socket_packs(buf, 9, cltFd);
-				int nLen = grap_pack(buf, code, "2");
-				global_sock_srv.send_socket_packs(buf, nLen, cltFd);
-			}
-			else
-			{
-	//			*(int*)buf = htonl(9);
-	//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
-	//			*(char*)(buf+8) = '1';
-	//			global_sock_srv.send_socket_packs(buf, 9, cltFd);
-				int nLen = grap_pack(buf, code, "1");
-				global_sock_srv.send_socket_packs(buf, nLen, cltFd);
-			}
+			int nLen = grap_pack(buf, code, szContent);
+			global_sock_srv.send_socket_packs(buf, nLen, cltFd);
 		}
 		else if(code == SOCKET_CODE_GETBOXINFO)
 		{
