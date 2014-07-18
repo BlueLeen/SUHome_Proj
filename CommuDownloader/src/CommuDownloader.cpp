@@ -18,6 +18,10 @@
 #include <sys/time.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <errno.h>
+#include <fcntl.h>
 #include "SocketSeal.h"
 #include "LogFile.h"
 #include "DeviceDetect.h"
@@ -25,6 +29,7 @@
 #include "InterfaceFull.h"
 using namespace std;
 
+#define ANDROID_SHELL "/system/bin/sh"
 #define ADB_ADB_NAME "adb"
 #define ADB_TCP_SERVER_PORT 7100
 //#define APP_ROOT_PATH "/system/strongunion/"
@@ -40,7 +45,7 @@ using namespace std;
 #define SOCKET_SENDPACK_LENGH	512
 #define SOCKET_RECVPACK_LENGH	512
 #define MAXSIZE  1024
-#define ROWSIZE  200
+#define ROWSIZE  400
 #define MINSIZE  100
 #define TINYSIZE 10
 //#define SOCKET_UTF8_BUFFER 1024
@@ -62,11 +67,21 @@ using namespace std;
 #define SOCKET_CODE_HEARTBEAT  			         104
 
 
+typedef struct _PHONEVID
+{
+	_PHONEVID():count(0)
+	{
+		memset(phoneVid, 0, sizeof(phoneVid));
+	}
+	unsigned int phoneVid[MAXSIZE];
+	int count;
+}PHONEVID;
+
 DeviceDetect global_detect;
 SocketSeal global_sock_srv;
 //SqliteManager global_sql_mgr;
 int global_client_fd[10] = { 0 };
-unsigned short global_phone_vid[MAXSIZE] = { 0 };
+PHONEVID global_phone_vidArr;
 
 typedef struct _SOCKCLIENTBUF
 {
@@ -325,7 +340,8 @@ void get_phone_vendorid()
 		int len = strlen(line);
 		if(line[len-1] == '\r')
 			line[len-1] = '\0';
-		global_phone_vid[nCount++] = strtol(line, NULL, 16);
+		//global_phone_vid[nCount++] = strtol(line, NULL, 16);
+		global_phone_vidArr.phoneVid[global_phone_vidArr.count++] = strtol(line, NULL, 16);
 	}
 	fclose(fpin);
 }
@@ -374,7 +390,7 @@ int main() {
 		if((pid = fork()) == 0)
 #endif
 		{
-#ifdef ONECLIENT
+#ifndef ONECLIENT
 			close(sockSrv);
 #endif
 			if (sockClt != 0)
@@ -392,7 +408,9 @@ int main() {
 	//			LogFile::write_sys_log(buf, APP_ROOT_PATH);
 	//#endif
 			}
+#ifndef ONECLIENT
 			exit(0);
+#endif
 		}
 
 		//listen_client_fd(sockClt);
@@ -513,10 +531,13 @@ int grap_pack(void* buf, int nCode, const char* content)
 	{
 		*(int*)buf = htonl(8);
 #ifdef DEBUG
-		char szLog[MINSIZE] = { 0 };
-		sprintf(szLog, "The send package is:%d %d", 8+nLen,
-				nCode);
-		LogFile::write_sys_log(szLog);
+		if(nCode != 104)
+		{
+			char szLog[MINSIZE] = { 0 };
+			sprintf(szLog, "The send package is:%d %d", 8+nLen,
+					nCode);
+			LogFile::write_sys_log(szLog);
+		}
 #endif
 		return 8;
 	}
@@ -549,10 +570,106 @@ int extract_pack(void* buf, unsigned int& code, char* szContent)
 	return len;
 }
 
+static pid_t* childpid = NULL; /* ptr to array allocated at run-time */
+static int maxfd;  /* from our open_max(), {Prog openmax} */
+long open_max(void)
+{
+	long openmax;
+	struct rlimit r1;
+	if((openmax = sysconf(_SC_OPEN_MAX))<0 || openmax == LONG_MAX)
+	{
+		if(getrlimit(RLIMIT_NOFILE, &r1) < 0)
+			LogFile::write_sys_log("can't get file limit!");
+		if(r1.rlim_max == RLIM64_INFINITY)
+			openmax = 256;
+		else
+			openmax = r1.rlim_max;
+	}
+	return openmax;
+}
+FILE* popendroid(const char *cmdstring, const char *type)
+{
+    int     i, pfd[2];
+    pid_t   pid;
+    FILE    *fp;
+    /* only allow "r" or "w" */
+    if ((type[0] != 'r' && type[0] != 'w') || type[1] != 0) {
+        errno = EINVAL;     /* required by POSIX.2 */
+        return(NULL);
+    }
+
+    if (childpid == NULL) {     /* first time through */
+        /* allocate zeroed out array for child pids */
+        maxfd = open_max();
+        if ( (childpid = (pid_t*)calloc(maxfd, sizeof(pid_t))) == NULL)
+            return(NULL);
+    }
+
+    if (pipe(pfd) < 0)
+        return(NULL);   /* errno set by pipe() */
+
+    if ( (pid = fork()) < 0)
+        return(NULL);   /* errno set by fork() */
+    else if (pid == 0) {                            /* child */
+        if (*type == 'r') {
+            close(pfd[0]);
+            if (pfd[1] != STDOUT_FILENO) {
+                dup2(pfd[1], STDOUT_FILENO);
+                close(pfd[1]);
+            }
+        } else {
+            close(pfd[1]);
+            if (pfd[0] != STDIN_FILENO) {
+                dup2(pfd[0], STDIN_FILENO);
+                close(pfd[0]);
+            }
+        }
+            /* close all descriptors in childpid[] */
+        for (i = 0; i < maxfd; i++)
+            if (childpid[ i ] > 0)
+                close(i);
+
+        execl(ANDROID_SHELL, "sh", "-c", cmdstring, (char *) 0);
+        _exit(127);
+    }
+                                /* parent */
+    if (*type == 'r') {
+        close(pfd[1]);
+        if ( (fp = fdopen(pfd[0], type)) == NULL)
+            return(NULL);
+    } else {
+        close(pfd[0]);
+        if ( (fp = fdopen(pfd[1], type)) == NULL)
+            return(NULL);
+    }
+    childpid[fileno(fp)] = pid; /* remember child pid for this fd */
+    return(fp);
+}
+
+int pclosedroid(FILE *fp)
+{
+    int     fd, stat;
+    pid_t   pid;
+    if (childpid == NULL)
+        return(-1);     /* popen() has never been called */
+    fd = fileno(fp);
+    if ( (pid = childpid[fd]) == 0)
+        return(-1);     /* fp wasn't opened by popen() */
+    childpid[fd] = 0;
+    if (fclose(fp) == EOF)
+        return(-1);
+    while (waitpid(pid, &stat, 0) < 0)
+        if (errno != EINTR)
+            return(-1); /* error other than EINTR from waitpid() */
+
+    return(stat);   /* return child's termination status */
+}
+
 int execstream(const char *cmdstring, char *buf, int size)
 {
 	FILE* stream;
 	stream = popen(cmdstring, "r");
+	//stream = popendroid(cmdstring, "r");
 	if(NULL == stream)
 	{
 		LogFile::write_sys_log("execute adb command failed!");
@@ -562,9 +679,16 @@ int execstream(const char *cmdstring, char *buf, int size)
 	else
 	{
 		while(NULL != fgets(buf, size, stream))
+		//while(NULL != fread(buf, sizeof(char), size, stream))
 		{
 		}
+//#ifdef DEBUG
+//		char szLog[MINSIZE] = { 0 };
+//		sprintf(szLog, "popen command is:%s", buf);
+//		LogFile::write_sys_log(szLog);
+//#endif
 		pclose(stream);
+		//pclosedroid(stream);
 		return 0;
 	}
 }
@@ -577,9 +701,11 @@ void trim(char* str, char trimstr)
 	strcpy(str, szTmp);
 	int len = strlen(str);
 	szTmp = str + len -1;
+	char* szEnd = szTmp;
 	while(*szTmp==' ' || *szTmp=='\n')
 		szTmp--;
-	*(szTmp+1) = '\0';
+	if(szTmp != szEnd)
+		*(szTmp+1) = '\0';
 }
 
 int add_pri(const char *pathname)
@@ -727,9 +853,9 @@ void parse_code(int code, char* szBuf, int cltFd)
 				get_current_path(szPath, sizeof(szPath));
 				sprintf(szApkFullPath, "%s%s/%s", szPath, APK_DIR_NAME, coninfo[i]);
 				//if(!global_sql_mgr.insert_sqlite_table(APP_DBTABLE_APKINFO, sqltext))
-				if(!rename(szApkPath, szApkFullPath))
+				if(rename(szApkPath, szApkFullPath) != 0)
 				{
-					remove(szApkFullPath);
+					remove(szApkPath);
 		//			*(int*)buf = htonl(9);
 		//			*(int*)(buf+4) = htonl(SOCKET_CODE_ADDBOXAPK);
 		//			*(char*)(buf+8) = '2';
@@ -796,28 +922,29 @@ void parse_code(int code, char* szBuf, int cltFd)
 			LogFile::write_sys_log(szContent);
 	#endif
 			//get the rom version
-			memset(szCmdResult, 0, sizeof(szCmdResult));
-			strcpy(szCmdString, "cat /system/build.prop | grep \"ro.build.version.release\"");
-			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
-			if(szCmdResult[0] != '\0')
-			{
-				szTmp = strstr(szCmdResult, "=");
-				strcpy(szTemp, szTmp+1);
-				strcpy(szCmdResult, szTemp);
-				len = strlen(szCmdResult);
-				if(szCmdResult[len-1] == '\n')
-					szCmdResult[len-1] = '_';
-				else
-				{
-					szCmdResult[len] = '_';
-					len++;
-				}
-				strcat(szContent, szCmdResult);
-			}
-			else
-			{
-				strcat(szContent, " _");
-			}
+			strcat(szContent, "2.0_");
+//			memset(szCmdResult, 0, sizeof(szCmdResult));
+//			strcpy(szCmdString, "cat /system/build.prop | grep \"ro.build.version.release\"");
+//			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+//			if(szCmdResult[0] != '\0')
+//			{
+//				szTmp = strstr(szCmdResult, "=");
+//				strcpy(szTemp, szTmp+1);
+//				strcpy(szCmdResult, szTemp);
+//				len = strlen(szCmdResult);
+//				if(szCmdResult[len-1] == '\n')
+//					szCmdResult[len-1] = '_';
+//				else
+//				{
+//					szCmdResult[len] = '_';
+//					len++;
+//				}
+//				strcat(szContent, szCmdResult);
+//			}
+//			else
+//			{
+//				strcat(szContent, " _");
+//			}
 	#ifdef DEBUG
 			LogFile::write_sys_log(szContent);
 	#endif
@@ -859,7 +986,33 @@ void parse_code(int code, char* szBuf, int cltFd)
 				if(szTmp != NULL)
 					*szTmp = '\0';
 				float speed = atof(szCmdResult) / 1000;
-				sprintf(szContent, "%s%.3f", szContent, speed);
+				sprintf(szContent, "%s%.3f_", szContent, speed);
+			}
+			else
+			{
+				strcat(szContent, " _");
+			}
+
+	#ifdef DEBUG
+			LogFile::write_sys_log(szContent);
+	#endif
+
+			//get the free memory space
+			memset(szCmdResult, 0, sizeof(szCmdResult));
+			strcpy(szCmdString, "cat /proc/meminfo | grep \"MemFree\"");
+			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+			//strcpy(szCmdResult, "BogoMIPS        : 119.10");
+			if(szCmdResult[0] != '\0')
+			{
+				szTmp = strstr(szCmdResult, ":");
+				strcpy(szTemp, szTmp+1);
+				strcpy(szCmdResult, szTemp);
+				trim(szCmdResult);
+				szTmp = strstr(szCmdResult, " ");
+				if(szTmp != NULL)
+					*szTmp = '\0';
+				unsigned long space = atol(szCmdResult) / 1000;
+				sprintf(szContent, "%s%ld", szContent, space);
 			}
 			else
 			{

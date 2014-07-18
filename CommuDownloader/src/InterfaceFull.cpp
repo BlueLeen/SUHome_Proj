@@ -17,7 +17,7 @@
 #include "CLock.h"
 
 #define MAXSIZE 1024
-#define ROWSIZE 200
+#define ROWSIZE 400
 //#define APK_DIR_NAME "apkdir"
 #define ADB_ADB_NAME "adb"
 //#define APP_ROOT_PATH "/system/strongunion/"
@@ -59,7 +59,7 @@ bool InterfaceFull::open_android_usbdebug()
     		break;
     	sleep(1);
     }
-	while(!bExit && nCount<=10)
+	while(!bExit && nCount<=6)
 	{
 		systemdroid(shellComm);
 		execstream(shellCommDevice, szInfo, sizeof(szInfo));

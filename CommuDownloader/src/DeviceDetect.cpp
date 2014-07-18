@@ -14,17 +14,20 @@
 #include <sys/time.h>
 #include <errno.h>
 #include <limits.h>
+#include <stdlib.h>
+#include <sys/statfs.h>
 //#include <sys/stat.h>
 #include "PlugEvent.h"
 #include "LogFile.h"
 #include "SocketSeal.h"
 #include "InterfaceFull.h"
+#include "CLock.h"
 
 //#define APP_ROOT_PATH "/system/strongunion/"
 #define DEV_USB_DEV 							"/proc/bus/usb/devices"
 #define DEV_USB_FILE 							"usbinfo"
 //#define DEV_USB_FILE "/home/leen/Desktop/new"
-#define ROWSIZE 200
+#define ROWSIZE 400
 #define MAXSIZE 1024
 
 #define SOCKET_CODE_PHONEPLUGIN  	 			 101
@@ -34,10 +37,24 @@
 #define SOCKET_CODE_PHONENOTRECOGNIZED  	     105
 #define SOCKET_CODE_PHONEOPENUSBDEBUG  	     	 107
 #define SOCKET_CODE_UPANPLUGIN  	     	 	 108
-#define SOCKET_CODE_SDCARDPULLOUT  	     	 	 109
+#define SOCKET_CODE_UPANBEREADY 	     	 	 109
+#define SOCKET_CODE_UPANPULLOUT 	     	 	 110
+#define SOCKET_CODE_SDCARDPLUGIN  	     	 	 111
+#define SOCKET_CODE_SDCARDBEREADY 	     	 	 112
+#define SOCKET_CODE_SDCARDPULLOUT 	     	 	 113
 
 extern void send_all_client_packs(char* buf, int size);
 extern int grap_pack(void* buf, int nCode, const char* content);
+typedef struct _PHONEVID
+{
+	_PHONEVID():count(0)
+	{
+		memset(phoneVid, 0, sizeof(phoneVid));
+	}
+	unsigned int phoneVid[MAXSIZE];
+	int count;
+}PHONEVID;
+extern PHONEVID global_phone_vidArr;
 //extern bool is_file_exist(const char *path);
 
 // 返回自系统开机以来的毫秒数（tick）
@@ -124,6 +141,62 @@ char* get_temp_path()
 	return szPath;
 }
 
+int binary_search(unsigned int a[], int size, int value)
+{
+	int beg=0;
+	int end=size-1;
+	while(beg <= end)
+	{
+		int pos = (beg+end)/2;
+		if(value < a[pos])
+			end = pos-1;
+		else if(value > a[pos])
+			beg = pos+1;
+		else
+			return pos;
+	}
+	return -1;
+}
+
+int GetStorageInfo(char * MountPoint,  //SD卡随便一个分区
+		int *Capacity,  //  想要获取的空间大小
+		int type) //获取什么类型的空间
+		{
+	struct statfs statFS; //系统stat的结构体
+	unsigned long usedBytes = 0;
+	unsigned long freeBytes = 0;
+	unsigned long totalBytes = 0;
+	unsigned long endSpace = 0;
+
+	if (statfs(MountPoint, &statFS) == -1) {   //获取分区的状态
+		printf("statfs failed for path->[%s]\n", MountPoint);
+		return (-1);
+	}
+
+	totalBytes = (unsigned long) statFS.f_blocks * (unsigned long) statFS.f_frsize; //详细的分区总容量， 以字节为单位
+	freeBytes = (unsigned long) statFS.f_bfree * (unsigned long) statFS.f_frsize; //详细的剩余空间容量，以字节为单位
+	usedBytes = (unsigned long)(totalBytes - freeBytes); //详细的使用空间容量，以字节为单位
+
+	switch (type) {
+	case 1:
+		endSpace = totalBytes / 1024; //以KB为单位的总容量
+		break;
+
+	case 2:
+		endSpace = usedBytes / 1024; //以KB为单位的使用空间
+		break;
+
+	case 3:
+		endSpace = freeBytes / 1024; //以KB为单位的剩余空间
+		break;
+
+	default:
+		return (-1);
+	}
+	*Capacity = endSpace; //这个不用说了吧
+	return 0;
+}
+
 //unsigned long get_file_size(const char *path)
 //{
 //    unsigned long filesize = -1;
@@ -148,6 +221,11 @@ unsigned long DeviceDetect::m_lastAddTime = 0;
 unsigned long DeviceDetect::m_lastChangeTime = 0;
 unsigned long DeviceDetect::m_lastRemoveTime = 0;
 char DeviceDetect::m_szAddTextPath[PATH_MAX] = { 0 };
+char DeviceDetect::m_szSdAddTextPath[PATH_MAX] = { 0 };
+
+unsigned long DeviceDetect::m_lastSdAddTime = 0;
+unsigned long DeviceDetect::m_lastSdChangeTime = 0;
+unsigned long DeviceDetect::m_lastSdRemoveTime = 0;
 
 
 DeviceDetect::DeviceDetect() {
@@ -165,6 +243,9 @@ unsigned long DeviceDetect::get_file_size(const char *path)
 	//get_current_path(szPath, sizeof(szPath));
 	if(m_bGetDeviceFileMethod)
 	{
+#ifdef DEBUG
+		LogFile::write_sys_log("use file:/proc/bus/usb/devices!");
+#endif
 		char szcmd[ROWSIZE] = { 0 };
 		char szTmpPath[PATH_MAX] = { 0 };
 		char* szPath = get_temp_path();
@@ -215,6 +296,10 @@ void DeviceDetect::plug_dev_detect() {
 	DeviceDetect::m_lastAddTime = GetTickCount();
 	DeviceDetect::m_lastChangeTime = GetTickCount();
 	DeviceDetect::m_lastRemoveTime = GetTickCount();
+
+	DeviceDetect::m_lastSdAddTime = GetTickCount();
+	DeviceDetect::m_lastSdChangeTime = GetTickCount();
+	DeviceDetect::m_lastSdRemoveTime = GetTickCount();
 //	if(is_file_exist(DEV_USB_DEV))
 //		DeviceDetect::m_bGetDeviceFileMethod = true;
 //	else
@@ -244,8 +329,14 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 			//DeviceInfo* pDev = new DeviceInfo();
 			//pDev->m_nCode = plug_opp_dev(buf, strlen(buf));
 			//pDev->m_nState = plug_opp_dev(buf, strlen(buf));
+			//LogFile::write_sys_log(buf);
 			int nState = plug_opp_dev(buf, strlen(buf));
-			if(nState == 1)
+			if(strstr(buf, "sdmmc") != NULL)
+			{
+				nState += 3;
+			}
+			char* tmp = strstr(buf, "usb");
+			if(nState == 1 && tmp!=NULL)
 			{
 				unsigned long curTime = GetTickCount();
 				if(curTime - m_lastAddTime > 3000)
@@ -262,7 +353,7 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 #endif
 				}
 			}
-			else if(nState == 2)
+			else if(nState == 2 && tmp!=NULL)
 			{
 				unsigned long curTime = GetTickCount();
 				if(curTime - m_lastChangeTime > 3000)
@@ -274,12 +365,53 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 //#endif
 				}
 			}
-			else if(nState == 3)
+			else if(nState == 3 && tmp!=NULL)
 			{
 				unsigned long curTime = GetTickCount();
 				if(curTime - m_lastRemoveTime > 3000)
 				{
 					m_lastRemoveTime = curTime;
+					pthread_create(&pt_recv, NULL, pthread_func_call, (void*)nState);
+#ifdef DEBUG
+					LogFile::write_sys_log(buf);
+#endif
+				}
+			}
+			else if(nState == 4)
+			{
+				unsigned long curTime = GetTickCount();
+				if(curTime - m_lastSdAddTime > 3000)
+				{
+					m_lastSdAddTime = curTime;
+					char* szText = strstr(buf, "@");
+					if(szText != NULL)
+						sprintf(m_szSdAddTextPath, "/sys%s", szText+1);
+					else
+						memset(m_szSdAddTextPath, 0, sizeof(m_szSdAddTextPath));
+					pthread_create(&pt_recv, NULL, pthread_func_call, (void*)nState);
+#ifdef DEBUG
+					LogFile::write_sys_log(buf);
+#endif
+				}
+			}
+			else if(nState == 5)
+			{
+				unsigned long curTime = GetTickCount();
+				if(curTime - m_lastSdChangeTime > 3000)
+				{
+					m_lastSdChangeTime = curTime;
+					pthread_create(&pt_recv, NULL, pthread_func_call, (void*)nState);
+#ifdef DEBUG
+					LogFile::write_sys_log(buf);
+#endif
+				}
+			}
+			else if(nState == 6)
+			{
+				unsigned long curTime = GetTickCount();
+				if(curTime - m_lastSdRemoveTime > 3000)
+				{
+					m_lastSdRemoveTime = curTime;
 					pthread_create(&pt_recv, NULL, pthread_func_call, (void*)nState);
 #ifdef DEBUG
 					LogFile::write_sys_log(buf);
@@ -343,8 +475,18 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 {
 	pthread_detach((unsigned long int)pthread_self());
 
+#ifdef DEBUG
+	LogFile::write_sys_log("******capture the device state start!.******");
+#endif
+
+	static bool bPhone = false;
 	//DeviceInfo* pDev = (DeviceInfo*)ptr;
 	unsigned long nState = (unsigned long)ptr;
+#ifdef DEBUG
+	char szLog[ROWSIZE] = { 0 };
+	sprintf(szLog, "the state number of device is:%d!", nState);
+	LogFile::write_sys_log(szLog);
+#endif
 	if(nState == 1)
 	{
 		m_bPlugedDevice = true;
@@ -367,10 +509,9 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 		//global_sock_srv.send_socket_packs()
 		char content[ROWSIZE] = { 0 };
 		memset(buf, 0, sizeof(buf));
-		sprintf(content, "%s_%s_%s %s_%s", devinfo.m_szVid, devinfo.m_szPid, devinfo.m_szManFac,
+		snprintf(content, sizeof(content), "%s_%s_%s %s_%s", devinfo.m_szVid, devinfo.m_szPid, devinfo.m_szManFac,
 				devinfo.m_szProduct, devinfo.m_szImei);
 #ifdef DEBUG
-		char szLog[ROWSIZE] = { 0 };
 		sprintf(szLog, "get:%s:end", content);
 		LogFile::write_sys_log(szLog);
 #endif
@@ -379,22 +520,81 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 //		memcpy(buf+8, content, ctnlen);
 //		*(int*)buf = htonl(ctnlen + 8);
 //		send_all_client_packs(buf, ctnlen+8);
-		if(strstr(devinfo.m_szManFac, "USB") || strstr(devinfo.m_szProduct, "USB") ||
-				strstr(devinfo.m_szManFac, "usb") || strstr(devinfo.m_szProduct, "usb"))
+		char sztmpVid[20] = { 0 };
+		snprintf(sztmpVid, sizeof(sztmpVid), "0X%s", devinfo.m_szVid);
+		unsigned int tmpVid = strtol(sztmpVid, NULL, 16);
+#ifdef DEBUG
+		sprintf(szLog, "the device vid:ten-%d,sixteen-%x", tmpVid, tmpVid);
+		LogFile::write_sys_log(szLog);
+#endif
+//		if(strstr(devinfo.m_szManFac, "USB") || strstr(devinfo.m_szProduct, "USB") ||
+//				strstr(devinfo.m_szManFac, "usb") || strstr(devinfo.m_szProduct, "usb"))
+		if(binary_search(global_phone_vidArr.phoneVid, global_phone_vidArr.count, tmpVid) < 0)
 		{
+			bPhone = false;
+#ifdef DEBUG
+			LogFile::write_sys_log("The device is not android phone in standard phone manufactory!");
+#endif
 			int nLen = grap_pack(buf, SOCKET_CODE_UPANPLUGIN, content);
 			send_all_client_packs(buf, nLen);
-			DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
+			//DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
+			sleep(3);
+			nLen = grap_pack(buf, SOCKET_CODE_UPANBEREADY, "1");
+			send_all_client_packs(buf, nLen);
 		}
 		else
 		{
-			int nLen = grap_pack(buf, SOCKET_CODE_PHONEPLUGIN, content);
-			send_all_client_packs(buf, nLen);
-			DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
+			int nLen = 0;
+//			int nLen = grap_pack(buf, SOCKET_CODE_PHONEPLUGIN, content);
+//			send_all_client_packs(buf, nLen);
+#ifdef DEBUG
+			LogFile::write_sys_log("usb plug into device!");
+#endif
+			//DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
 
+#ifdef DEBUG
+			LogFile::write_sys_log("try to open usb debug mode.");
+#endif
 			bool bDebug = InterfaceFull::open_android_usbdebug();
-			nLen = grap_pack(buf, SOCKET_CODE_PHONEOPENUSBDEBUG, bDebug==true?"1":"2");
-			send_all_client_packs(buf, nLen);
+#ifdef DEBUG
+			sprintf(szLog, "the result of open usb debug mode is:%s", bDebug==true?"true":"false");
+			LogFile::write_sys_log(szLog);
+#endif
+			if(bDebug)
+			{
+				int nLen = grap_pack(buf, SOCKET_CODE_PHONEPLUGIN, content);
+				send_all_client_packs(buf, nLen);
+				//nLen = grap_pack(buf, SOCKET_CODE_PHONEOPENUSBDEBUG, bDebug==true?"1":"2");
+				bPhone = true;
+				nLen = grap_pack(buf, SOCKET_CODE_PHONEOPENUSBDEBUG, "1");
+				send_all_client_packs(buf, nLen);
+#ifdef DEBUG
+				LogFile::write_sys_log("open the android phone usb debug mode success.");
+#endif
+			}
+			else if(strstr(buf, "Android") != NULL)
+			{
+				nLen = grap_pack(buf, SOCKET_CODE_PHONEPLUGIN, content);
+				send_all_client_packs(buf, nLen);
+				bPhone = true;
+				nLen = grap_pack(buf, SOCKET_CODE_PHONEOPENUSBDEBUG, "2");
+				send_all_client_packs(buf, nLen);
+#ifdef DEBUG
+				LogFile::write_sys_log("open the android phone usb debug mode fail, can't recognize the phone.");
+#endif
+			}
+			else
+			{
+				bPhone = false;
+				nLen = grap_pack(buf, SOCKET_CODE_UPANPLUGIN, content);
+				send_all_client_packs(buf, nLen);
+				sleep(1);
+				nLen = grap_pack(buf, SOCKET_CODE_UPANBEREADY, "1");
+				send_all_client_packs(buf, nLen);
+#ifdef DEBUG
+				LogFile::write_sys_log("open device usb debug mode fail, it may be UPan.");
+#endif
+			}
 		}
 	}
 	else if(nState == 2)
@@ -403,18 +603,62 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 	}
 	else if(nState == 3)
 	{
+#ifdef DEBUG
+		LogFile::write_sys_log("begin to remove the usb device.");
+#endif
 		m_bPlugedDevice = false;
 		char buf[MAXSIZE] = { 0 };
 //		*(int*)(buf+4) = htonl(SOCKET_CODE_PHONEPULLOUT);
 //		*(char*)(buf+8) = ' ';
 //		*(int*)buf = htonl(9);
 //		send_all_client_packs(buf, 9);
-		int nLen = grap_pack(buf, SOCKET_CODE_PHONEPULLOUT, NULL);
-		send_all_client_packs(buf, nLen);
+		if(bPhone)
+		{
+			bPhone = false;
+			int nLen = grap_pack(buf, SOCKET_CODE_PHONEPULLOUT, NULL);
+			send_all_client_packs(buf, nLen);
+		}
+		else
+		{
+			int nLen = grap_pack(buf, SOCKET_CODE_UPANPULLOUT, NULL);
+			send_all_client_packs(buf, nLen);
+		}
 		DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
+	}
+	else if(nState == 4)
+	{
+		DeviceInfo devinfo;
+		char buf[MAXSIZE] = { 0 };
+#ifdef DEBUG
+			LogFile::write_sys_log("SDCard plug in.");
+#endif
+		devinfo.get_dev_info(buf, m_szSdAddTextPath);
+		char content[ROWSIZE] = { 0 };
+		memset(buf, 0, sizeof(buf));
+		sprintf(content, "%s_%s_%s %s_%s", devinfo.m_szVid, devinfo.m_szPid, devinfo.m_szManFac,
+				devinfo.m_szProduct, devinfo.m_szImei);
+		int nLen = grap_pack(buf, SOCKET_CODE_SDCARDPLUGIN, content);
+		send_all_client_packs(buf, nLen);
+		sleep(3);
+		nLen = grap_pack(buf, SOCKET_CODE_SDCARDBEREADY, "1");
+		send_all_client_packs(buf, nLen);
+	}
+	else if(nState == 5)
+	{
+
+	}
+	else if(nState == 6)
+	{
+		char buf[MAXSIZE] = { 0 };
+		int nLen = grap_pack(buf, SOCKET_CODE_SDCARDPULLOUT, NULL);
+		send_all_client_packs(buf, nLen);
 	}
 
 	//delete pDev;
+#ifdef DEBUG
+	LogFile::write_sys_log("******capture the device state over!.*******");
+#endif
+
 
 	return 0;
 }

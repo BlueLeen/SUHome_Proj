@@ -28,7 +28,7 @@ PlugEvent::~PlugEvent() {
 
 void PlugEvent::init_hotplug_sock()
 {
-	const int buffersize = 1024;
+	const int buffersize = 1024 * 64;
 	int ret;
 
 	struct sockaddr_nl snl;

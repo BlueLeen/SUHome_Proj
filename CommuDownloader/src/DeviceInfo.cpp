@@ -11,11 +11,35 @@
 #include <string.h>
 #include <limits.h>
 
-#define ROWSIZE 200
+#define ROWSIZE 400
 
 extern bool is_file_exist(const char *path);
 extern int execstream(const char *cmdstring, char *buf, int size);
 extern void trim(char* str, char trimstr=' ');
+
+int replacestr(char *sSrc, char *sMatchStr, char *sReplaceStr)
+{
+        int  StringLen;
+        char caNewString[ROWSIZE];
+
+        char *FindPos = strstr(sSrc, sMatchStr);
+        if( (!FindPos) || (!sMatchStr) )
+                return -1;
+
+        while( FindPos )
+        {
+                memset(caNewString, 0, sizeof(caNewString));
+                StringLen = FindPos - sSrc;
+                strncpy(caNewString, sSrc, StringLen);
+                strcat(caNewString, sReplaceStr);
+                strcat(caNewString, FindPos + strlen(sMatchStr));
+                strcpy(sSrc, caNewString);
+
+                FindPos = strstr(sSrc, sMatchStr);
+        }
+
+        return 0;
+}
 
 DeviceInfo::DeviceInfo()
 :m_nCode(-1),m_nUsbNum(-1),m_nState(0),m_nFormat(0)
@@ -177,59 +201,62 @@ void DeviceInfo::get_dev_info(char* buf, const char* path)
 		char szCmdString[ROWSIZE] = { 0 };
 		char szCmdResult[ROWSIZE] = { 0 };
 		//get the idVendor
-		sprintf(szPath, "%s/idVendor", path);
-		sprintf(szCmdString, "cat %s", szPath);
+		snprintf(szPath, sizeof(szPath), "%s/idVendor", path);
+		snprintf(szCmdString,  sizeof(szCmdString), "cat %s", szPath);
 		if(is_file_exist(szPath))
 		{
 			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
 			trim(szCmdResult);
-			strcpy(m_szVid, szCmdResult);
+			strncpy(m_szVid, szCmdResult, sizeof(m_szVid));
 		}
 		//get the idProduct
-		sprintf(szPath, "%s/idProduct", path);
-		sprintf(szCmdString, "cat %s", szPath);
+		snprintf(szPath, sizeof(szPath), "%s/idProduct", path);
+		snprintf(szCmdString,  sizeof(szCmdString), "cat %s", szPath);
 		if(is_file_exist(szPath))
 		{
 			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
 			trim(szCmdResult);
-			strcpy(m_szPid, szCmdResult);
+			strncpy(m_szPid, szCmdResult, sizeof(m_szPid));
 		}
 		//get the manufacturer
-		sprintf(szPath, "%s/manufacturer", path);
-		sprintf(szCmdString, "cat %s", szPath);
+		snprintf(szPath, sizeof(szPath), "%s/manufacturer", path);
+		snprintf(szCmdString,  sizeof(szCmdString), "cat %s", szPath);
 		if(is_file_exist(szPath))
 		{
 			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
 			trim(szCmdResult);
-			strcpy(m_szManFac, szCmdResult);
+			replacestr(szCmdResult, "_", "###");
+			strncpy(m_szManFac, szCmdResult, sizeof(m_szManFac));
 		}
 		//get the product
-		sprintf(szPath, "%s/product", path);
-		sprintf(szCmdString, "cat %s", szPath);
+		snprintf(szPath, sizeof(szPath), "%s/product", path);
+		snprintf(szCmdString,  sizeof(szCmdString), "cat %s", szPath);
 		if(is_file_exist(szPath))
 		{
 			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
 			trim(szCmdResult);
-			strcpy(m_szProduct, szCmdResult);
+			replacestr(szCmdResult, "_", "###");
+			strncpy(m_szProduct, szCmdResult, sizeof(m_szProduct));
 		}
 		//get the imei
-		sprintf(szPath, "%s/serial", path);
-		sprintf(szCmdString, "cat %s", szPath);
+		snprintf(szPath, sizeof(szPath), "%s/serial", path);
+		snprintf(szCmdString,  sizeof(szCmdString), "cat %s", szPath);
 		if(is_file_exist(szPath))
 		{
 			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
 			trim(szCmdResult);
-			strcpy(m_szImei, szCmdResult);
+			replacestr(szCmdResult, "_", "###");
+			strncpy(m_szImei, szCmdResult, sizeof(m_szImei));
 		}
-		//get the imei
-		sprintf(szPath, "%s/serial", path);
-		sprintf(szCmdString, "cat %s", szPath);
-		if(is_file_exist(szPath))
-		{
-			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
-			trim(szCmdResult);
-			strcpy(m_szImei, szCmdResult);
-		}
+//		//get the imei
+//		sprintf(szPath, "%s/serial", path);
+//		sprintf(szCmdString, "cat %s", szPath);
+//		if(is_file_exist(szPath))
+//		{
+//			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+//			trim(szCmdResult);
+//			strcpy(m_szImei, szCmdResult);
+//		}
 	}
 }
 

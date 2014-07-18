@@ -33,9 +33,15 @@ private:
 	static unsigned long m_lastRemoveTime;
 	static unsigned long m_nUsbFileSize;
 
-	static char m_szAddTextPath[PATH_MAX];
+	static unsigned long m_lastSdAddTime;
+	static unsigned long m_lastSdChangeTime;
+	static unsigned long m_lastSdRemoveTime;
 
-	static const int UEVENT_BUFFER_SIZE = 2048;
+	static char m_szAddTextPath[PATH_MAX];
+	static char m_szSdAddTextPath[PATH_MAX];
+
+	//static const int UEVENT_BUFFER_SIZE = 2048;
+	static const int UEVENT_BUFFER_SIZE = 64*1024;;
 
 	static void* pthread_func_plug(void* ptr);
 	static void* pthread_func_call(void* ptr);
