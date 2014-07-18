@@ -30,8 +30,12 @@ using namespace std;
 #define RUN			"Run"
 #define EXEFILE		"ExeFile"
 #define COUNT		"Count"
+#define UPGRADE		"Upgrade"
+#define UPDATE		"Update"
+#define REBOOT		"Reboot"
+#define CENTER 		"/data/local/tmp/strongunion/center"
 
-#define ROWSIZE  		 200
+#define ROWSIZE  		 400
 #define READ_BUF_SIZE    50
 
 int systemdroid(const char * cmdstring)
@@ -143,7 +147,7 @@ void trim(char* str, char trimstr=' ')
 	*(szTmp+1) = '\0';
 }
 
-pid_t* find_pid_by_name( char* pidName)
+pid_t* find_pid_by_name( char* pidName, int& pidCount)
 {
     DIR *dir;
     struct dirent *next;
@@ -185,28 +189,37 @@ pid_t* find_pid_by_name( char* pidName)
             pidList[i++]=strtol(next->d_name, NULL, 0);
         }
     }
+    pidCount = i;
     return pidList;
 }
 
 void KillProcess()
 {
 	pid_t* pId;
-	pId = find_pid_by_name("adb");
-	if(pId != NULL)
+	int nCount = 0;
+	pId = find_pid_by_name("adb", nCount);
+	for(int i=0; i<nCount; i++)
 	{
-	    if(*pId > 0)
-	    {
-	        kill(*pId, SIGKILL);
-	    }
+		if(pId != NULL)
+		{
+		    if(*pId > 0)
+		    {
+		        kill(*pId, SIGKILL);
+		    }
+		}
 	}
-    pId = find_pid_by_name("center");
-	if(pId != NULL)
-	{
-	    if(*pId > 0)
-	    {
-	        kill(*pId, SIGKILL);
-	    }
-	}
+	nCount = 0;
+    pId = find_pid_by_name("center", nCount);
+    for(int i=0; i<nCount; i++)
+    {
+    	if(pId != NULL)
+    	{
+    	    if(*pId > 0)
+    	    {
+    	        kill(*pId, SIGKILL);
+    	    }
+    	}
+    }
 }
 
 int AddPri(const char *pathname)
@@ -226,42 +239,95 @@ int AddPri(const char *pathname)
     return 0;
 }
 
-void CopyFile()
+void write_sys_log(char* szWriteString)
+{
+	char szFilePath[PATH_MAX]={0};
+	char szLogPath[PATH_MAX]={0};
+	FILE* fp;
+	char szTime[50];
+	time_t ti;
+	//get_current_path(szFilePath, PATH_MAX);
+	//sprintf(szLogPath, "%s%s", szFilePath, "up.log");
+	sprintf(szLogPath, "%s%s", SETTINGPATH, "up.log");
+	fp = fopen(szLogPath, "a+");
+	time(&ti);
+	struct tm* ptm = localtime(&ti);
+	sprintf(szTime, "Now time is:%d/%d/%d %d:%d:%d", ptm->tm_mon+1, ptm->tm_mday, ptm->tm_year+1900, ptm->tm_hour, ptm->tm_min, ptm->tm_sec);
+	fprintf(fp,"%s>>----- %s\n", szTime, szWriteString);
+	fclose(fp);
+}
+
+void trimspace(char* szText)
+{
+	int nLen = strlen(szText)-1;
+	while(szText[nLen]=='\r' || szText[nLen]=='\n')
+	{
+		szText[nLen] = '\0';
+		nLen--;
+	}
+}
+
+void fileconvert(char* szSrcPath, char* szDesPath)
+{
+	FILE *fpin;
+	FILE *fpout;
+	char line[ROWSIZE] = { 0 };
+	if(!is_file_exist(szSrcPath))
+		return;
+	fpin = fopen(szSrcPath, "r");
+	fpout = fopen(szDesPath, "w+");
+	while(fgets(line, ROWSIZE, fpin) != NULL)
+	{
+		trimspace(line);
+		int len = strlen(line);
+		if(len <= ROWSIZE-2)
+		{
+			line[len] = '\n';
+			line[len+1] = '\0';
+			fputs(line, fpout);
+		}
+	}
+	fclose(fpin);
+	fclose(fpout);
+}
+
+void CopyFile(char* csPath)
 {
 	char csSrcFile[PATH_MAX] = {0};
 	char csDesFile[PATH_MAX] = {0};
-	char csPath[PATH_MAX] = {0};
 	int nCount=0;
-	sprintf(csPath, "%s%s", GetPath(), SETTINGINI);
-	if(!is_file_exist(csPath))
-		sprintf(csPath, "%s%s", SETTINGPATH, SETTINGINI);
 	RegTool::GetPrivateProfileInt(COPY, COUNT, nCount, csPath);
 	for(int i=0; i<nCount; i++)
 	{
 		char csTemp[ROWSIZE];
 		sprintf(csTemp, "%s%d", SRCFILE, i+1);
 		RegTool::GetPrivateProfileString(COPY, csTemp, csSrcFile, csPath);
+		trimspace(csSrcFile);
 		sprintf(csTemp, "%s%d", DESFILE, i+1);
 		RegTool::GetPrivateProfileString(COPY, csTemp, csDesFile, csPath);
-		rename(csSrcFile, csDesFile);
+		trimspace(csDesFile);
+		int result = rename(csSrcFile, csDesFile);
+		if(result != 0)
+		{
+			char szLog[ROWSIZE] = { 0 } ;
+			sprintf(szLog, "Copy File:%s Failed!the fault code num:%d.", csSrcFile, result);
+			write_sys_log(szLog);
+		}
 	}
 }
 
-void RunExe()
+void RunExe(char* csPath)
 {
 	char szExeFile[PATH_MAX] = {0};
 	char csExeFile[PATH_MAX] = {0};
-	char csPath[PATH_MAX] = {0};
 	int nCount=0;
-	sprintf(csPath, "%s%s", GetPath(), SETTINGINI);
-	if(!is_file_exist(csPath))
-		sprintf(csPath, "%s%s", SETTINGPATH, SETTINGINI);
 	RegTool::GetPrivateProfileInt(RUN, COUNT, nCount, csPath);
 	for(int i=0; i<nCount; i++)
 	{
 		char csTemp[PATH_MAX];
 		sprintf(csTemp, "%s%d", EXEFILE, i+1);
 		RegTool::GetPrivateProfileString(RUN, csTemp, csExeFile, csPath);
+		trimspace(csExeFile);
 		if(strchr(csExeFile, '/')==NULL)
 		{
 			char szPath[PATH_MAX] = { 0 };
@@ -270,18 +336,51 @@ void RunExe()
 			if(!is_file_exist(szExeFile))
 				sprintf(szExeFile, "%s%s", SETTINGPATH, csExeFile);
 		}
-		if(!AddPri(szExeFile))
+		if(is_file_exist(szExeFile))
 		{
-			systemdroid(szExeFile);
-			remove(szExeFile);
+			if(AddPri(szExeFile) == 0)
+			{
+				char szExeFileBack[PATH_MAX] = { 0 };
+				sprintf(szExeFileBack, "%s.back", szExeFile);
+				fileconvert(szExeFile, szExeFileBack);
+				if(AddPri(szExeFileBack) == 0)
+					systemdroid(szExeFileBack);
+				remove(szExeFileBack);
+				remove(szExeFile);
+			}
 		}
 	}
 }
 
+char* InitPath()
+{
+	static char csPath[PATH_MAX] = {0};
+	sprintf(csPath, "%s%s", GetPath(), SETTINGINI);
+	if(!is_file_exist(csPath))
+		sprintf(csPath, "%s%s", SETTINGPATH, SETTINGINI);
+	return csPath;
+}
+
 int main() {
-	KillProcess();
-	CopyFile();
-	RunExe();
+	char* szPath = InitPath();
+	int nUpdate=0;
+	RegTool::GetPrivateProfileInt(UPGRADE, UPDATE, nUpdate, szPath, 0);
+	if(nUpdate != 1)
+		return 1;
+	//KillProcess();
+	CopyFile(szPath);
+	RunExe(szPath);
+	int nReboot=1;
+	RegTool::GetPrivateProfileInt(UPGRADE, REBOOT, nUpdate, szPath, 1);
+	if(nUpdate == 1)
+		systemdroid("reboot");
+	else
+	{
+		char szCenter[ROWSIZE] = { 0 };
+		sprintf(szCenter, "%s", CENTER);
+		sleep(5);
+		systemdroid(szCenter);
+	}
 	//cout << "!!!Hello World!!!" << endl; // prints !!!Hello World!!!
 	return 0;
 }
