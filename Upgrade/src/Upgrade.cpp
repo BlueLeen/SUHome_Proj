@@ -370,17 +370,17 @@ int main() {
 	//KillProcess();
 	CopyFile(szPath);
 	RunExe(szPath);
-	int nReboot=1;
-	RegTool::GetPrivateProfileInt(UPGRADE, REBOOT, nUpdate, szPath, 1);
-	if(nUpdate == 1)
+	int nReboot=0;
+	RegTool::GetPrivateProfileInt(UPGRADE, REBOOT, nReboot, szPath, 0);
+	if(nReboot == 1)
 		systemdroid("reboot");
-	else
-	{
-		char szCenter[ROWSIZE] = { 0 };
-		sprintf(szCenter, "%s", CENTER);
-		sleep(5);
-		systemdroid(szCenter);
-	}
+//	else
+//	{
+//		char szCenter[ROWSIZE] = { 0 };
+//		sprintf(szCenter, "%s", CENTER);
+//		sleep(5);
+//		systemdroid(szCenter);
+//	}
 	//cout << "!!!Hello World!!!" << endl; // prints !!!Hello World!!!
 	return 0;
 }
