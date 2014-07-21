@@ -26,6 +26,7 @@
 //#define APP_ROOT_PATH "/system/strongunion/"
 #define DEV_USB_DEV 							"/proc/bus/usb/devices"
 #define DEV_USB_FILE 							"usbinfo"
+#define DEV_EXTERNAL_SDCARD_PATH				"/mnt/external_sd"
 //#define DEV_USB_FILE "/home/leen/Desktop/new"
 #define ROWSIZE 400
 #define MAXSIZE 1024
@@ -45,6 +46,8 @@
 
 extern void send_all_client_packs(char* buf, int size);
 extern int grap_pack(void* buf, int nCode, const char* content);
+extern int execstream(const char *cmdstring, char *buf, int size);
+extern void trim(char* str, char trimstr=' ');
 typedef struct _PHONEVID
 {
 	_PHONEVID():count(0)
@@ -179,21 +182,60 @@ int GetStorageInfo(char * MountPoint,  //SD卡随便一个分区
 
 	switch (type) {
 	case 1:
-		endSpace = totalBytes / 1024; //以KB为单位的总容量
+		endSpace = totalBytes / 1048576; //以MB为单位的总容量
 		break;
 
 	case 2:
-		endSpace = usedBytes / 1024; //以KB为单位的使用空间
+		endSpace = usedBytes / 1048576; //以MB为单位的使用空间
 		break;
 
 	case 3:
-		endSpace = freeBytes / 1024; //以KB为单位的剩余空间
+		endSpace = freeBytes / 1048576; //以MB为单位的剩余空间
 		break;
 
 	default:
 		return (-1);
 	}
 	*Capacity = endSpace; //这个不用说了吧
+	return 0;
+}
+
+int GetStorageInfo(char *TotalCapacity, char *FreeCapacity, char* path)
+{
+	char szCmdString[ROWSIZE] = { 0 };
+	char szCmdResult[ROWSIZE] = { 0 };
+	sprintf(szCmdString, "df %s", path);
+	execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+//	strcpy(szCmdResult, "Filesystem               Size     Used     Free   Blksize\n\
+///mnt/external_sd         7.2G   449.0M     6.8G   4096");
+	trim(szCmdResult);
+	char* tmp = strstr(szCmdResult, path);
+	if(tmp != NULL)
+	{
+		strncpy(szCmdResult, tmp, sizeof(szCmdResult));
+		tmp = strstr(szCmdResult, " ");
+		int i=0;
+		while(i < 3)
+		{
+			if(tmp != NULL)
+			{
+				i++;
+				strncpy(szCmdResult, tmp, sizeof(szCmdResult));
+				trim(szCmdResult);
+				tmp = strstr(szCmdResult, " ");
+				if(i == 1)
+					strncpy(TotalCapacity, szCmdResult, tmp-szCmdResult);
+				else if(i == 3)
+					strncpy(FreeCapacity, szCmdResult, tmp-szCmdResult);
+			}
+			else
+				break;
+		}
+	}
+//#ifdef DEBUG
+//	LogFile::write_sys_log(szCmdResult);
+//#endif
+
 	return 0;
 }
 
@@ -627,16 +669,26 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 	}
 	else if(nState == 4)
 	{
-		DeviceInfo devinfo;
+		//DeviceInfo devinfo;
 		char buf[MAXSIZE] = { 0 };
-#ifdef DEBUG
-			LogFile::write_sys_log("SDCard plug in.");
-#endif
-		devinfo.get_dev_info(buf, m_szSdAddTextPath);
+//#ifdef DEBUG
+//		sprintf(szLog, "SDCard plug in.Path is:%s", m_szSdAddTextPath);
+//		LogFile::write_sys_log(szLog);
+//#endif
+		//devinfo.get_dev_info(buf, m_szSdAddTextPath);
 		char content[ROWSIZE] = { 0 };
 		memset(buf, 0, sizeof(buf));
-		sprintf(content, "%s_%s_%s %s_%s", devinfo.m_szVid, devinfo.m_szPid, devinfo.m_szManFac,
-				devinfo.m_szProduct, devinfo.m_szImei);
+//		int TotalStorage = 0;
+//		int FreeStorage = 0;
+//		GetStorageInfo(m_szSdAddTextPath, &TotalStorage, 1);
+//		GetStorageInfo(m_szSdAddTextPath, &FreeStorage, 3);
+		//char szTotalStorage[10] = { 0 };
+		//char szFreeStorage[10] = { 0 };
+		//GetStorageInfo(szTotalStorage, szFreeStorage);
+		//sprintf(content, "%s_%s", szTotalStorage, szFreeStorage);
+		strncpy(content, DEV_EXTERNAL_SDCARD_PATH, sizeof(content));
+//		sprintf(content, "%s_%s_%s %s_%s", devinfo.m_szVid, devinfo.m_szPid, devinfo.m_szManFac,
+//				devinfo.m_szProduct, devinfo.m_szImei);
 		int nLen = grap_pack(buf, SOCKET_CODE_SDCARDPLUGIN, content);
 		send_all_client_packs(buf, nLen);
 		sleep(3);

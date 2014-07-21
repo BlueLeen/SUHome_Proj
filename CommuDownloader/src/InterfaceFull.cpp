@@ -144,9 +144,13 @@ int InterfaceFull::install_android_apk(char* szApk)
 	char szInfo[MAXSIZE] = { 0 };
 	//sprintf(shellComm, "%s install -r %s", ADB_ADB_NAME, szApkPath);
 	sprintf(shellComm, "%s install -r %s", szAdbPath, szApkPath);
+#ifdef DEBUG
 	LogFile::write_sys_log(shellComm);
+#endif
 	int result = execstream(shellComm, szInfo, sizeof(szInfo));
+#ifdef DEBUG
 	LogFile::write_sys_log(szInfo);
+#endif
 	//systemdroid("exit");
 	return result;
 }

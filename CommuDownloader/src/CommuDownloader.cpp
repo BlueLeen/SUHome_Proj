@@ -40,6 +40,7 @@ using namespace std;
 #define APK_DIR_NAME "dir"
 #define ADB_USB_FILE "adb_usb.ini"
 #define APK_TEMP_PATH  "/data/local/tmp/strongunion/tmp"
+#define DEV_INTERNAL_SDCARD_PATH "/mnt/internal_sd"
 #define SOCKET_STATR_TOKEN "OK"
 #define SOCKET_RECVPACK_CONTENT	512
 #define SOCKET_SENDPACK_LENGH	512
@@ -99,6 +100,7 @@ void parse_code(int code, char* szBuf, int cltFd);
 int grap_pack(void* buf, int nCode, const char* content);
 int extract_pack(void* buf, unsigned int& code, char* szContent);
 extern int systemdroid(const char * cmdstring);
+//extern int GetStorageInfo(char *TotalCapacity, char *FreeCapacity);
 
 //int code_convert(char *from_charset,char *to_charset,char *inbuf,unsigned long int inlen,char *outbuf,unsigned long int outlen)
 //{
@@ -726,12 +728,18 @@ void parse_code(int code, char* szBuf, int cltFd)
 	{
 		char buf[BUFSIZ] = { 0 }; //数据传送的缓冲区
 		char szPath[PATH_MAX] = { 0 };
-		if(code == SOCKET_CODE_UPGRADEBOX)
+		if(code == 50)
+		{
+//			char szTotalStorage[10] = { 0 };
+//			char szFreeStorage[10] = { 0 };
+//			GetStorageInfo(szTotalStorage, szFreeStorage);
+		}
+		else if(code == SOCKET_CODE_UPGRADEBOX)
 		{
 			get_current_path(szPath, sizeof(szPath));
 			strcat(szPath, "up");
 			systemdroid(szPath);
-			exit(0);
+			//exit(0);
 		}
 		else if(code == SOCKET_CODE_REBOOTBOX)
 		{
