@@ -24,6 +24,8 @@ using namespace std;
 #define SETTTINPS   "/data/local/tmp/ps.txt"
 #define SETTINGPATH	"/data/local/tmp/"
 #define SETTINGINI	"setting.ini"
+#define UPDATEINI	"update.ini"
+#define UPDATELOG   "up.log"
 #define COPY		"Copy"
 #define SRCFILE		"SrcFile"
 #define DESFILE		"DesFile"
@@ -33,6 +35,7 @@ using namespace std;
 #define UPGRADE		"Upgrade"
 #define UPDATE		"Update"
 #define REBOOT		"Reboot"
+#define SUCCESS		"Success"
 #define CENTER 		"/data/local/tmp/strongunion/center"
 
 #define ROWSIZE  		 400
@@ -239,6 +242,23 @@ int AddPri(const char *pathname)
     return 0;
 }
 
+int AddPriRw(const char *pathname)
+{
+    struct stat statbuf;
+    /* turn on set-group-ID and turn off group-execute */
+    if (stat(pathname, &statbuf) < 0)
+    	return 1;
+    if (chmod(pathname, S_IREAD|S_IRGRP|S_IROTH|S_IWRITE|S_IWGRP|S_IWOTH ) < 0)
+    	return 1;
+//    if (chmod(pathname, (statbuf.st_mode & ~S_IXGRP) | S_ISGID) < 0)
+//            exit(1);
+//    /* set absolute mode to "rw-r--r--" */
+//    if (chmod("bar", S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH) < 0)
+//            exit(1);
+//    exit(0);
+    return 0;
+}
+
 void write_sys_log(char* szWriteString)
 {
 	char szFilePath[PATH_MAX]={0};
@@ -248,7 +268,7 @@ void write_sys_log(char* szWriteString)
 	time_t ti;
 	//get_current_path(szFilePath, PATH_MAX);
 	//sprintf(szLogPath, "%s%s", szFilePath, "up.log");
-	sprintf(szLogPath, "%s%s", SETTINGPATH, "up.log");
+	sprintf(szLogPath, "%s%s", SETTINGPATH, UPDATELOG);
 	fp = fopen(szLogPath, "a+");
 	time(&ti);
 	struct tm* ptm = localtime(&ti);
@@ -291,7 +311,7 @@ void fileconvert(char* szSrcPath, char* szDesPath)
 	fclose(fpout);
 }
 
-void CopyFile(char* csPath)
+bool CopyFile(char* csPath)
 {
 	char csSrcFile[PATH_MAX] = {0};
 	char csDesFile[PATH_MAX] = {0};
@@ -303,6 +323,13 @@ void CopyFile(char* csPath)
 		sprintf(csTemp, "%s%d", SRCFILE, i+1);
 		RegTool::GetPrivateProfileString(COPY, csTemp, csSrcFile, csPath);
 		trimspace(csSrcFile);
+		if(!is_file_exist(csSrcFile))
+		{
+			char szLog[ROWSIZE] = { 0 } ;
+			sprintf(szLog, "File:%s not exist.!", csSrcFile);
+			write_sys_log(szLog);
+			continue;
+		}
 		sprintf(csTemp, "%s%d", DESFILE, i+1);
 		RegTool::GetPrivateProfileString(COPY, csTemp, csDesFile, csPath);
 		trimspace(csDesFile);
@@ -312,11 +339,18 @@ void CopyFile(char* csPath)
 			char szLog[ROWSIZE] = { 0 } ;
 			sprintf(szLog, "Copy File:%s Failed!the fault code num:%d.", csSrcFile, result);
 			write_sys_log(szLog);
+			return false;
 		}
+#ifdef DEBUG
+		char szLog[ROWSIZE] = { 0 };
+		sprintf(szLog, "move file:%s to:%s success.!", csSrcFile, csDesFile);
+		write_sys_log(szLog);
+#endif
 	}
+	return true;
 }
 
-void RunExe(char* csPath)
+bool RunExe(char* csPath)
 {
 	char szExeFile[PATH_MAX] = {0};
 	char csExeFile[PATH_MAX] = {0};
@@ -347,29 +381,113 @@ void RunExe(char* csPath)
 					systemdroid(szExeFileBack);
 				remove(szExeFileBack);
 				remove(szExeFile);
+#ifdef DEBUG
+				char szLog[ROWSIZE] = { 0 };
+				sprintf(szLog, "execute batch file:%s success.!", szExeFile);
+				write_sys_log(szLog);
+#endif
 			}
 		}
+		else
+		{
+			char szLog[ROWSIZE] = { 0 } ;
+			sprintf(szLog, "File:%s is not exist.!", szExeFile);
+			write_sys_log(szLog);
+			return false;
+		}
 	}
+	return true;
+}
+
+char* InitSettingPath()
+{
+	static char csPath[PATH_MAX] = {0};
+//	sprintf(csPath, "%s%s", GetPath(), SETTINGINI);
+//	if(!is_file_exist(csPath))
+		sprintf(csPath, "%s%s", SETTINGPATH, SETTINGINI);
+	return csPath;
 }
 
 char* InitPath()
 {
 	static char csPath[PATH_MAX] = {0};
-	sprintf(csPath, "%s%s", GetPath(), SETTINGINI);
-	if(!is_file_exist(csPath))
-		sprintf(csPath, "%s%s", SETTINGPATH, SETTINGINI);
+//	sprintf(csPath, "%s%s", GetPath(), SETTINGINI);
+//	if(!is_file_exist(csPath))
+		sprintf(csPath, "%s%s", SETTINGPATH, UPDATEINI);
+	return csPath;
+}
+
+char* UpdateLogPath()
+{
+	static char csPath[PATH_MAX] = {0};
+//	sprintf(csPath, "%s%s", GetPath(), SETTINGINI);
+//	if(!is_file_exist(csPath))
+		sprintf(csPath, "%s%s", SETTINGPATH, UPDATELOG);
 	return csPath;
 }
 
 int main() {
-	char* szPath = InitPath();
+//	char* szSetting = InitSettingPath();
+//	char* szPath = InitPath();
+//	AddPriRw(szSetting);
+//	if(is_file_exist(szPath))
+//		remove(szPath);
+//	fileconvert(szSetting, szPath);
+//	//remove(szSetting);
+//	AddPriRw(szPath);
+	char* szSetting = InitPath();
+	char* szPath = InitSettingPath();
+	char* szUpdate = UpdateLogPath();
+#ifdef DEBUG
+	char szLog[ROWSIZE] = { 0 };
+	sprintf(szLog, "Upgrade begin.!");
+	write_sys_log(szLog);
+#endif
+	AddPriRw(szPath);
+	if(is_file_exist(szSetting))
+	{
+		remove(szSetting);
+#ifdef DEBUG
+		sprintf(szLog, "remove file:%s succeed.!", szSetting);
+		write_sys_log(szLog);
+#endif
+	}
+	if(is_file_exist(szUpdate))
+	{
+		remove(szUpdate);
+#ifdef DEBUG
+		sprintf(szLog, "remove file:%s succeed.!", szUpdate);
+		write_sys_log(szLog);
+#endif
+	}
+	char szPathBack[PATH_MAX] = { 0 };
+	strncpy(szPathBack, szPath, sizeof(szPathBack));
+	snprintf(szPath, sizeof(szPath), "%s.bak", szPath);
+	fileconvert(szPathBack, szPath);
 	int nUpdate=0;
 	RegTool::GetPrivateProfileInt(UPGRADE, UPDATE, nUpdate, szPath, 0);
+#ifdef DEBUG
+	sprintf(szLog, "update value is:%d.", nUpdate);
+	write_sys_log(szLog);
+#endif
 	if(nUpdate != 1)
 		return 1;
 	//KillProcess();
-	CopyFile(szPath);
-	RunExe(szPath);
+	//RegTool::WritePrivateProfileInt(UPGRADE, SUCCESS, 1, szPath);
+	if(!CopyFile(szPath))
+	{
+		//RegTool::WritePrivateProfileInt(UPGRADE, SUCCESS, 0, szPath);
+		RegTool::WritePrivateProfileInt(UPGRADE, SUCCESS, 0, szSetting);
+		exit(1);
+	}
+	if(!RunExe(szPath))
+	{
+		//RegTool::WritePrivateProfileInt(UPGRADE, SUCCESS, 0, szPath);
+		RegTool::WritePrivateProfileInt(UPGRADE, SUCCESS, 0, szSetting);
+		exit(2);
+	}
+	//RegTool::WritePrivateProfileInt(UPGRADE, SUCCESS, 1, szPath);
+	RegTool::WritePrivateProfileInt(UPGRADE, SUCCESS, 1, szSetting);
 	int nReboot=0;
 	RegTool::GetPrivateProfileInt(UPGRADE, REBOOT, nReboot, szPath, 0);
 	if(nReboot == 1)

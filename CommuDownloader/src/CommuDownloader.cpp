@@ -27,6 +27,7 @@
 #include "DeviceDetect.h"
 //#include "SqliteManager.h"
 #include "InterfaceFull.h"
+#include "RegTool.h"
 using namespace std;
 
 #define ANDROID_SHELL "/system/bin/sh"
@@ -41,6 +42,10 @@ using namespace std;
 #define ADB_USB_FILE "adb_usb.ini"
 #define APK_TEMP_PATH  "/data/local/tmp/strongunion/tmp"
 #define DEV_INTERNAL_SDCARD_PATH "/mnt/internal_sd"
+#define UPGRADE					"Upgrade"
+#define SUCCESS					"Success"
+#define UPSETTINGPATH			"/data/local/tmp/"
+#define UPUPDATEINI				"update.ini"
 #define SOCKET_STATR_TOKEN "OK"
 #define SOCKET_RECVPACK_CONTENT	512
 #define SOCKET_SENDPACK_LENGH	512
@@ -722,6 +727,15 @@ int add_pri(const char *pathname)
     return 0;
 }
 
+int get_upgrade_result()
+{
+	char szPath[PATH_MAX] = { 0 };
+	int nSuccess=0;
+	sprintf(szPath, "%s%s", UPSETTINGPATH, UPUPDATEINI);
+	RegTool::GetPrivateProfileInt(UPGRADE, SUCCESS, nSuccess, szPath, 0);
+	return nSuccess;
+}
+
 void parse_code(int code, char* szBuf, int cltFd)
 {
 	try
@@ -740,6 +754,17 @@ void parse_code(int code, char* szBuf, int cltFd)
 			strcat(szPath, "up");
 			systemdroid(szPath);
 			//exit(0);
+			int result = get_upgrade_result();
+			if(result == 1)
+			{
+				int len = grap_pack(buf, code, "1");
+				global_sock_srv.send_socket_packs(buf, len, cltFd);
+			}
+			else
+			{
+				int len = grap_pack(buf, code, "2");
+				global_sock_srv.send_socket_packs(buf, len, cltFd);
+			}
 		}
 		else if(code == SOCKET_CODE_REBOOTBOX)
 		{
