@@ -54,6 +54,7 @@ using namespace std;
 #define ROWSIZE  400
 #define MINSIZE  100
 #define TINYSIZE 10
+#define READ_BUF_SIZE    50
 //#define SOCKET_UTF8_BUFFER 1024
 //#define SOCKET_BUFFER	   512
 
@@ -353,8 +354,58 @@ void get_phone_vendorid()
 	fclose(fpin);
 }
 
+pid_t* find_pid_by_name( char* pidName, int& pidCount)
+{
+    DIR *dir;
+    struct dirent *next;
+    pid_t* pidList=NULL;
+    int i=0;
+
+    dir = opendir("/proc");
+
+
+    while ((next = readdir(dir)) != NULL) {
+        FILE *status;
+        char filename[READ_BUF_SIZE];
+        char buffer[READ_BUF_SIZE];
+        char name[READ_BUF_SIZE];
+
+        /* Must skip ".." since that is outside /proc */
+        if (strcmp(next->d_name, "..") == 0)
+            continue;
+
+        /* If it isn't a number, we don't want it */
+        if (!isdigit(*next->d_name))
+            continue;
+
+        sprintf(filename, "/proc/%s/status", next->d_name);
+        if (! (status = fopen(filename, "r")) ) {
+            continue;
+        }
+        if (fgets(buffer, READ_BUF_SIZE-1, status) == NULL) {
+            fclose(status);
+            continue;
+        }
+        fclose(status);
+
+        /* Buffer should contain a string like "Name:   binary_name" */
+        sscanf(buffer, "%*s %s", name);
+
+        if (strcmp(name, pidName) == 0) {
+            pidList=(pid_t*)realloc( pidList, sizeof(pid_t) * (i+2));
+            pidList[i++]=strtol(next->d_name, NULL, 0);
+        }
+    }
+    pidCount = i;
+    return pidList;
+}
+
 int main() {
 	//cout << "!!!Hello World!!!" << endl; // prints !!!Hello World!!!
+	int nCount = 0;
+	find_pid_by_name("center", nCount);
+	if(nCount > 1)
+		exit(1);
 	get_phone_vendorid();
 	if(!set_home_env("HOME", "/data"))
 		LogFile::write_sys_log("create HOME=/data failed!");
