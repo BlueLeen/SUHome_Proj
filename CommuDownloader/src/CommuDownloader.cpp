@@ -41,6 +41,7 @@ using namespace std;
 #define APK_DIR_NAME "dir"
 #define ADB_USB_FILE "adb_usb.ini"
 #define APK_TEMP_PATH  "/data/local/tmp/strongunion/tmp"
+#define APK_DIR_PATH   "/data/local/tmp/strongunion/dir"
 #define DEV_INTERNAL_SDCARD_PATH "/mnt/internal_sd"
 #define UPGRADE					"Upgrade"
 #define SUCCESS					"Success"
@@ -400,13 +401,41 @@ pid_t* find_pid_by_name( char* pidName, int& pidCount)
     return pidList;
 }
 
+void create_dir()
+{
+	if(!is_file_exist(APK_DIR_PATH))
+		//mkdir(APK_DIR_PATH, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+		mkdir(APK_DIR_PATH, S_IRWXU | S_IRWXG | S_IRWXO);
+	if(!is_file_exist(APK_TEMP_PATH))
+		mkdir(APK_TEMP_PATH, S_IRWXU | S_IRWXG | S_IRWXO);
+}
+
+void KillProcess(char* szProcess)
+{
+	pid_t* pId;
+	int nCount = 0;
+	pId = find_pid_by_name(szProcess, nCount);
+	for(int i=0; i<nCount; i++)
+	{
+		if(pId != NULL)
+		{
+		    if(*pId > 0)
+		    {
+		        kill(*pId, SIGKILL);
+		    }
+		}
+	}
+}
+
 int main() {
 	//cout << "!!!Hello World!!!" << endl; // prints !!!Hello World!!!
 	int nCount = 0;
 	find_pid_by_name("center", nCount);
 	if(nCount > 1)
 		exit(1);
+	create_dir();
 	get_phone_vendorid();
+	KillProcess("adb");
 	if(!set_home_env("HOME", "/data"))
 		LogFile::write_sys_log("create HOME=/data failed!");
 	char szAdbPath[PATH_MAX] = { 0 };

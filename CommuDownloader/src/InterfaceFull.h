@@ -15,6 +15,7 @@ public:
 
 	static int install_android_apk(char* szApk);
 	static bool open_android_usbdebug();
+	static bool phone_state_off();
 private:
 	static int phone_is_online(char* buf);
 	static bool phone_is_online(char* buf, char* cmd);

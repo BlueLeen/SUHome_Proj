@@ -96,6 +96,16 @@ bool InterfaceFull::open_android_usbdebug()
 //	}
 }
 
+bool InterfaceFull::phone_state_off()
+{
+	char shellCommState[MAXSIZE] = { 0 };
+	char szAdbPath[PATH_MAX] = { 0 };
+	char szInfo[MAXSIZE] = { 0 };
+	sprintf(szAdbPath, "%s%s", get_current_path(), ADB_ADB_NAME);
+	sprintf(shellCommState, "%s get-state", szAdbPath);
+	return phone_is_online(szInfo, shellCommState) ? false:true;
+}
+
 int InterfaceFull::install_android_apk(char* szApk)
 {
 	char shellComm[MAXSIZE] = { 0 };

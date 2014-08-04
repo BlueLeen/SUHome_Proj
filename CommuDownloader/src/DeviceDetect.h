@@ -45,6 +45,7 @@ private:
 
 	static void* pthread_func_plug(void* ptr);
 	static void* pthread_func_call(void* ptr);
+	static void* pthread_func_detect(void* ptr);
 	static int plug_opp_dev(char* usb_message, int nLen);
 	static void plug_opp_dev(string& strMessage, DeviceInfo* pDev);
 	static unsigned long get_file_size(const char *path);

@@ -604,6 +604,9 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 #endif
 			if(bDebug)
 			{
+				pthread_t pt_detect = 0;
+				pthread_create(&pt_detect, NULL, pthread_func_detect, NULL);
+
 				int nLen = grap_pack(buf, SOCKET_CODE_PHONEPLUGIN, content);
 				send_all_client_packs(buf, nLen);
 				//nLen = grap_pack(buf, SOCKET_CODE_PHONEOPENUSBDEBUG, bDebug==true?"1":"2");
@@ -748,4 +751,27 @@ void DeviceDetect::send_usb_info()
 			send_all_client_packs(buf, nLen);
 		}
 	}
+}
+
+void* DeviceDetect::pthread_func_detect(void* ptr)
+{
+	char buf[MAXSIZE] = { 0 };
+	while(true)
+	{
+		if(!m_bPlugedDevice)
+			break;
+		else if(!InterfaceFull::phone_state_off())
+		{
+			sleep(3);
+			continue;
+		}
+		else
+		{
+			m_bPlugedDevice = false;
+			int nLen = grap_pack(buf, SOCKET_CODE_PHONEPULLOUT, NULL);
+			send_all_client_packs(buf, nLen);
+			break;
+		}
+	}
+	return 0;
 }
