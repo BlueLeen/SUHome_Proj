@@ -585,7 +585,8 @@ int extract_content_info(const char* content, char (*field)[MINSIZE], int count,
 	char* tmp = (char*)content;
 	for(i=0; i<count-1; i++)
 	{
-		const char* szSep = strstr(tmp, "_");
+		//const char* szSep = strstr(tmp, "_");
+		char* szSep = strstr(tmp, "_");
 		if(szSep == NULL)
 			break;
 		strncpy((char*)field, tmp, szSep-tmp);

@@ -380,8 +380,9 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 			char* tmp = strstr(buf, "usb");
 			if(nState == 1 && tmp!=NULL)
 			{
+				char* sda = strstr(buf, "/block/sda");
 				unsigned long curTime = GetTickCount();
-				if(curTime - m_lastAddTime > 3000)
+				if(curTime - m_lastAddTime > 3000 && sda==NULL)
 				{
 					m_lastAddTime = curTime;
 					char* szText = strstr(buf, "@");
@@ -604,8 +605,8 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 #endif
 			if(bDebug)
 			{
-				pthread_t pt_detect = 0;
-				pthread_create(&pt_detect, NULL, pthread_func_detect, NULL);
+//				pthread_t pt_detect = 0;
+//				pthread_create(&pt_detect, NULL, pthread_func_detect, NULL);
 
 				int nLen = grap_pack(buf, SOCKET_CODE_PHONEPLUGIN, content);
 				send_all_client_packs(buf, nLen);
@@ -659,6 +660,7 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 //		send_all_client_packs(buf, 9);
 		if(bPhone)
 		{
+			InterfaceFull::phone_plug_out();
 			bPhone = false;
 			int nLen = grap_pack(buf, SOCKET_CODE_PHONEPULLOUT, NULL);
 			send_all_client_packs(buf, nLen);
