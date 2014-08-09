@@ -8,12 +8,12 @@
 #ifndef INTERFACEFULL_H_
 #define INTERFACEFULL_H_
 
-#define ROWSIZE 400
+#define MINROWSIZE 50
 #define USBCOUNT 8
 
 typedef struct _SerialLine
 {
-	char szSerial[ROWSIZE];
+	char szSerial[MINROWSIZE];
 	bool bOnline;
 }SerialLine;
 
@@ -36,8 +36,8 @@ private:
 	static int execstream(const char *cmdstring, char *buf, int size);
 	static void detect_device();
 	static char* get_adb_path();
-	static SerialLine m_Sl[USBCOUNT];
-	static int m_nCount;
+//	static SerialLine m_Sl[USBCOUNT];
+//	static int m_nCount;
 };
 
 #endif /* INTERFACEFULL_H_ */

@@ -22,6 +22,8 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
+//#include <sys/shm.h>
+#include <sys/mman.h>
 #include "SocketSeal.h"
 #include "LogFile.h"
 #include "DeviceDetect.h"
@@ -96,6 +98,9 @@ typedef struct _SOCKCLIENTBUF
 	void* pBuf;
 	int clientFd;
 }SOCKCLIENTBUF;
+
+SerialLine* global_ptrSl;
+int* global_ptrDevNum;
 
 extern char* get_current_path();
 extern char* get_current_path(char* szPath, int nLen);
@@ -191,7 +196,7 @@ void remove_client_fd(int nClientFd)
 static void* pthread_func_listen(void* pSockClt)
 {
 	pthread_detach(pthread_self());
-	pthread_t pt_recv_parse = 0;
+	//pthread_t pt_recv_parse = 0;
 	void* pBuffer = NULL;
 	int sockClt = *(int*)pSockClt;
 	static int ret = 0;
@@ -335,7 +340,7 @@ bool set_home_env(const char *name, const char * value)
 void get_phone_vendorid()
 {
 	FILE *fpin;
-	static int nCount=0;
+	//static int nCount=0;
 	char line[ROWSIZE] = { 0 };
 	char szFile[PATH_MAX] = { 0 };
 	sprintf(szFile, "%s%s", get_current_path(), ADB_USB_FILE);
@@ -410,6 +415,26 @@ void create_dir()
 		mkdir(APK_TEMP_PATH, S_IRWXU | S_IRWXG | S_IRWXO);
 }
 
+void create_bin()
+{
+//	mount -o remount,rw /
+//	mkdir /bin
+//	ln -s /system/bin/sh /bin/sh
+	if(!is_file_exist("/bin/sh"))
+	{
+//#ifdef DEBUG
+//		LogFile::write_sys_log("create link file: /bin/sh");
+//#endif
+		char shellComm[MAXSIZE] = { 0 };
+		snprintf(shellComm, sizeof(shellComm), "mount -o remount,rw /");
+		systemdroid(shellComm);
+		snprintf(shellComm, sizeof(shellComm), "mkdir /bin");
+		systemdroid(shellComm);
+		snprintf(shellComm, sizeof(shellComm), "ln -s /system/bin/sh /bin/sh");
+		systemdroid(shellComm);
+	}
+}
+
 void KillProcess(char* szProcess)
 {
 	pid_t* pId;
@@ -427,6 +452,50 @@ void KillProcess(char* szProcess)
 	}
 }
 
+void alloc_shmem()
+{
+	int fd = shm_open("./myshm", O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+	ftruncate(fd, 1024);
+	void *shm = mmap(NULL, 1024, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	//global_ptrShm = mmap(NULL, 1024, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	//close(fd);
+	*((int*)shm) = 3;
+	//printf("\nMemory attached at %X\n", *(int*)shm);
+	global_ptrDevNum = (int*)shm;
+	*global_ptrDevNum = 3;
+	global_ptrSl = (SerialLine*)(shm + sizeof(int*));
+
+//	key_t key;
+//	int shmid;//共享内存标识符
+//	void *shm = NULL;//分配的共享内存的原始首地址
+//	key = ftok("vmmshmsu", 1); // 计算标识符
+//	//创建共享内存
+//	if ((shmid = shmget(key, 1024, IPC_CREAT | IPC_EXCL |0666)) < 0)
+//		printf("shmget error");
+//		//exit(1);
+//	//将共享内存连接到当前进程的地址空间
+//	shm = shmat(shmid, 0, 0);
+//	if (shm == (void*) -1) {
+//		fprintf(stderr, "shmat failed\n");
+//		exit(EXIT_FAILURE);
+//	}
+//	memset(shm, 0, 1024);
+//	global_ptrDevNum = (int*)shm;
+//	*global_ptrDevNum = 3;
+//	global_ptrSl = (SerialLine*)(shm + sizeof(int*));
+	//printf("\nMemory attached at %X\n", (unsigned long) global_share_ptr);
+}
+
+void shmem_rw()
+{
+	struct stat stat;
+	int fd = shm_open("./myshm", O_RDWR, S_IRUSR | S_IWUSR);
+	fstat(fd, &stat);
+	global_ptrDevNum = (int*) mmap(NULL, stat.st_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	global_ptrSl = (SerialLine*)(global_ptrDevNum+sizeof(int*));
+	close(fd);
+}
+
 int main() {
 	//cout << "!!!Hello World!!!" << endl; // prints !!!Hello World!!!
 	int nCount = 0;
@@ -434,6 +503,9 @@ int main() {
 	if(nCount > 1)
 		exit(1);
 	create_dir();
+	create_bin();
+	alloc_shmem();
+	printf("\nMemory attached at %X\n", *global_ptrDevNum);
 	get_phone_vendorid();
 	KillProcess("adb");
 	if(!set_home_env("HOME", "/data"))

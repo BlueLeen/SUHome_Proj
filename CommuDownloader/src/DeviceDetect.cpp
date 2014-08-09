@@ -547,7 +547,23 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 		}
 		else
 		{
-			devinfo.get_dev_info(buf, m_szAddTextPath);
+#ifdef DEBUG
+			sprintf(szLog, "device path:%s", m_szAddTextPath);
+			LogFile::write_sys_log(szLog);
+#endif
+			int nVidLen=0;
+			int iNum=0;
+			do{
+				devinfo.get_dev_info(buf, m_szAddTextPath);
+				nVidLen = strlen(devinfo.m_szVid);
+#ifdef DEBUG
+				sprintf(szLog, "Vid length:%d", nVidLen);
+				LogFile::write_sys_log(szLog);
+#endif
+				if(iNum >= 1)
+					sleep(1);
+				iNum++;
+			}while(nVidLen<4&&iNum<3);
 		}
 		//global_sock_srv.send_socket_packs()
 		char content[ROWSIZE] = { 0 };

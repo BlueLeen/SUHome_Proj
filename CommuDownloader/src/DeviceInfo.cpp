@@ -6,6 +6,7 @@
  */
 
 #include "DeviceInfo.h"
+#include "LogFile.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -198,6 +199,11 @@ void DeviceInfo::get_dev_info(char* buf, const char* path)
 		return;
 	else
 	{
+#ifdef DEBUG
+		char szLog[ROWSIZE] = { 0 };
+		sprintf(szLog, "get the device info,path is:%s", path);
+		LogFile::write_sys_log(szLog);
+#endif
 		char szCmdString[ROWSIZE] = { 0 };
 		char szCmdResult[ROWSIZE] = { 0 };
 		//get the idVendor
@@ -208,6 +214,10 @@ void DeviceInfo::get_dev_info(char* buf, const char* path)
 			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
 			trim(szCmdResult);
 			strncpy(m_szVid, szCmdResult, sizeof(m_szVid));
+#ifdef DEBUG
+			sprintf(szLog, "Vid cmd:%s,value:%s", szCmdString, m_szVid);
+			LogFile::write_sys_log(szLog);
+#endif
 		}
 		//get the idProduct
 		snprintf(szPath, sizeof(szPath), "%s/idProduct", path);

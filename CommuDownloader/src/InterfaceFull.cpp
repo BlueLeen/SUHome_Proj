@@ -25,10 +25,14 @@
 #define APK_TEMP_PATH  "/data/local/tmp/strongunion/tmp"
 #define DEVICE_EMULATOR  "emulator"//"8fd35188"  //"emulator"
 
+extern SerialLine* global_ptrSl;
+extern int* global_ptrDevNum;
+extern void shmem_rw();
+
 char* get_current_path();
 
-SerialLine  InterfaceFull::m_Sl[USBCOUNT];
-int InterfaceFull::m_nCount = 0;
+//SerialLine  InterfaceFull::m_Sl[USBCOUNT];
+//int InterfaceFull::m_nCount = 0;
 
 InterfaceFull::InterfaceFull() {
 	// TODO Auto-generated constructor stub
@@ -54,7 +58,7 @@ void InterfaceFull::detect_device()
 	//execstream(shellCommDevice, szInfo, sizeof(szInfo));
 
 	int iNum=0;
-	char szSer[USBCOUNT][ROWSIZE];
+	char szSer[USBCOUNT][MINROWSIZE];
 	FILE* stream;
 	stream = popen(shellCommDevice, "r");
 	if(NULL == stream)
@@ -72,11 +76,12 @@ void InterfaceFull::detect_device()
 				j++;
 				continue;
 			}
-			strncpy(szSer[iNum++], szInfo, ROWSIZE);
+			strncpy(szSer[iNum++], szInfo, MINROWSIZE);
 		}
 		pclose(stream);
 	}
-	m_nCount = 0;
+	//m_nCount = 0;
+	*global_ptrDevNum = 0;
 	for(int i=0; i<iNum; i++)
 	{
 		char* szTmp = strstr(szSer[i], "\t");
@@ -84,16 +89,21 @@ void InterfaceFull::detect_device()
 		if(szTmp!=NULL && szEmulator==NULL)
 		{
 			//char szSrl[ROWSIZE] = { 0 };
-			memset(m_Sl[m_nCount].szSerial, 0, ROWSIZE);
+			//memset(m_Sl[m_nCount].szSerial, 0, MINROWSIZE);
+			memset((global_ptrSl+(*global_ptrDevNum))->szSerial, 0, MINROWSIZE);
 			int size = szTmp-szSer[i];
-			strncpy((char*)m_Sl[m_nCount].szSerial, szSer[i], size);
-			m_Sl[m_nCount].szSerial[size] = '\0';
+			//strncpy((char*)m_Sl[m_nCount].szSerial, szSer[i], size);
+			strncpy((global_ptrSl+(*global_ptrDevNum))->szSerial, szSer[i], size);
+			//m_Sl[m_nCount].szSerial[size] = '\0';
+			(global_ptrSl+(*global_ptrDevNum))->szSerial[size] = '\0';
 #ifdef DEBUG
 			char szLog[MINSIZE] = { 0 };
-			snprintf(szLog, sizeof(szLog), "device %d serialno:%s---", m_nCount, m_Sl[m_nCount].szSerial);
+			//snprintf(szLog, sizeof(szLog), "device %d serialno:%s---", m_nCount, m_Sl[m_nCount].szSerial);
+			snprintf(szLog, sizeof(szLog), "device %d serialno:%s---", *global_ptrDevNum, (global_ptrSl+(*global_ptrDevNum))->szSerial);
 			LogFile::write_sys_log(szLog);
 #endif
-			m_nCount++;
+			//m_nCount++;
+			(*global_ptrDevNum)++;
 		}
 	}
 }
@@ -135,20 +145,33 @@ bool InterfaceFull::open_android_usbdebug(char* szSerialno)
 bool InterfaceFull::open_android_usbdebug()
 {
 	int nCount = 0;
-	m_nCount = 0;
+	//m_nCount = 0;
+	shmem_rw();
+	//LogFile::write_sys_log(*global_ptrDevNum);
+	(*global_ptrDevNum) = 0;
+	//LogFile::write_sys_log(*global_ptrDevNum);
 #ifdef DEBUG
 	char szLog[MINSIZE] = { 0 };
-	snprintf(szLog, sizeof(szLog), "current device count:%d.", m_nCount);
+	//snprintf(szLog, sizeof(szLog), "current device count:%d.", m_nCount);
+	snprintf(szLog, sizeof(szLog), "current device count:%d.", *global_ptrDevNum);
 	LogFile::write_sys_log(szLog);
 #endif
-	while(m_nCount <= 0 && nCount < 5)
+	//while(m_nCount <= 0 && nCount < 5)
+	while(*global_ptrDevNum <= 0 && nCount < 5)
 	{
 		detect_device();
 		sleep(1);
 		nCount++;
 	}
-	if(m_nCount==1 || m_nCount==0)
-		return open_android_usbdebug(m_Sl[0].szSerial);
+#ifdef DEBUG
+	//snprintf(szLog, sizeof(szLog), "current device count:%d after detect.", m_nCount);
+	snprintf(szLog, sizeof(szLog), "current device count:%d after detect.", *global_ptrDevNum);
+	LogFile::write_sys_log(szLog);
+#endif
+	//if(m_nCount==1 || m_nCount==0)
+	if(*global_ptrDevNum==1 || *global_ptrDevNum==0)
+		//return open_android_usbdebug(m_Sl[0].szSerial);
+		return open_android_usbdebug(global_ptrSl->szSerial);
 	else
 		return true;
 //    CLock lock;
@@ -198,13 +221,16 @@ bool InterfaceFull::phone_state_off(char* szSerialno)
 
 void InterfaceFull::phone_plug_out()
 {
-	m_nCount--;
+	//m_nCount--;
+	(*global_ptrDevNum)--;
 }
 
 bool InterfaceFull::phone_state_off()
 {
-	if(m_nCount == 1)
-		return phone_state_off(m_Sl[0].szSerial);
+//	if(m_nCount == 1)
+//		return phone_state_off(m_Sl[0].szSerial);
+	if(*global_ptrDevNum == 1)
+		return phone_state_off(global_ptrSl->szSerial);
 	else
 		return true;
 //	char shellCommState[MAXSIZE] = { 0 };
@@ -236,14 +262,29 @@ int InterfaceFull::install_android_apk(char* szApk, char* szSerialno)
 
 int InterfaceFull::install_android_apk(char* szApk)
 {
+	shmem_rw();
+#ifdef DEBUG
+	char szLog[MINSIZE] = { 0 };
+	//snprintf(szLog, sizeof(szLog), "before start install apk::phone count:%d,phone serialno:%s.", m_nCount, m_Sl[0].szSerial);
+	snprintf(szLog, sizeof(szLog), "before start install apk::phone count:%d,phone serialno:%s.", *global_ptrDevNum, global_ptrSl->szSerial);
+	LogFile::write_sys_log(szLog);
+#endif
 	int result = 0;
-	if(m_nCount == 1 )
-		return install_android_apk(szApk, m_Sl[0].szSerial);
+//	if(m_nCount == 1 )
+//		return install_android_apk(szApk, m_Sl[0].szSerial);
+//	else
+//		for(int i=0; i<m_nCount; i++)
+//		{
+//			result = install_android_apk(szApk, m_Sl[i].szSerial);
+//		}
+	if(*global_ptrDevNum == 1 )
+		return install_android_apk(szApk, global_ptrSl->szSerial);
 	else
-		for(int i=0; i<m_nCount; i++)
+		for(int i=0; i<*global_ptrDevNum; i++)
 		{
-			result = install_android_apk(szApk, m_Sl[i].szSerial);
+			result = install_android_apk(szApk, (global_ptrSl+(*global_ptrDevNum))->szSerial);
 		}
+
 	return result;
 //	char shellComm[MAXSIZE] = { 0 };
 //	//char szPath[MAXSIZE] = { 0 };
@@ -304,13 +345,13 @@ int InterfaceFull::install_android_apk(char* szApk)
 
 bool InterfaceFull::phone_is_online(char* buf, char* cmd)
 {
-	char szInfo[ROWSIZE] = { 0 };
+	char szInfo[MINROWSIZE] = { 0 };
 	execstream(cmd, szInfo, sizeof(szInfo));
 	char* tmp = strchr(szInfo, '\n');
 	if(tmp != NULL)
 		*tmp = '\0';
 #ifdef DEBUG
-		char szLog[ROWSIZE] = { 0 };
+		char szLog[MINROWSIZE] = { 0 };
 		sprintf(szLog, "The phone's state is:%s", szInfo);
 		LogFile::write_sys_log(szLog);
 #endif
