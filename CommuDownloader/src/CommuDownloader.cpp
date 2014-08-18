@@ -458,7 +458,7 @@ void alloc_shmem()
 	ftruncate(fd, 1024);
 	void *shm = mmap(NULL, 1024, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 	//global_ptrShm = mmap(NULL, 1024, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-	//close(fd);
+	close(fd);
 	*((int*)shm) = 3;
 	//printf("\nMemory attached at %X\n", *(int*)shm);
 	global_ptrDevNum = (int*)shm;
