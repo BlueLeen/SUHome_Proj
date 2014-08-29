@@ -44,6 +44,11 @@ using namespace std;
 #define ADB_USB_FILE "adb_usb.ini"
 #define APK_TEMP_PATH  "/data/local/tmp/strongunion/tmp"
 #define APK_DIR_PATH   "/data/local/tmp/strongunion/dir"
+#define APK_KEY_DIR  "/data/.android"
+#define APK_KEY_ROOT   "/root/.android"
+#define APK_KEY_FILE_ADBKEY  	"adbkey"
+#define APK_KEY_FILE_ADBKEYPUB  "adbkey.pub"
+#define APK_KEY_FILE_ADBKEYUSB  "adb_usb.ini"
 #define DEV_INTERNAL_SDCARD_PATH "/mnt/internal_sd"
 #define UPGRADE					"Upgrade"
 #define SUCCESS					"Success"
@@ -113,6 +118,8 @@ int grap_pack(void* buf, int nCode, const char* content);
 int extract_pack(void* buf, unsigned int& code, char* szContent);
 extern int systemdroid(const char * cmdstring);
 //extern int GetStorageInfo(char *TotalCapacity, char *FreeCapacity);
+extern int GetStorageInfo(char * MountPoint, int *Capacity,  int type);
+extern int GetStorageInfo(char *TotalCapacity, char *FreeCapacity, char* path);
 
 //int code_convert(char *from_charset,char *to_charset,char *inbuf,unsigned long int inlen,char *outbuf,unsigned long int outlen)
 //{
@@ -415,6 +422,61 @@ void create_dir()
 		mkdir(APK_TEMP_PATH, S_IRWXU | S_IRWXG | S_IRWXO);
 }
 
+void create_adbkey_file()
+{
+	char shellComm[MAXSIZE] = { 0 };
+	char szFileSrc[PATH_MAX] = { 0 };
+	char szFileDes[PATH_MAX] = { 0 };
+	if(!is_file_exist(APK_KEY_DIR ))
+		//mkdir(APK_DIR_PATH, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+		mkdir(APK_KEY_DIR, S_IRWXU);
+	if(!is_file_exist(APK_KEY_ROOT))
+		mkdir(APK_KEY_ROOT, S_IRWXU);
+	char* szCurDir = get_current_path();
+
+	snprintf(szFileSrc, sizeof(szFileSrc), "%s%s", szCurDir, APK_KEY_FILE_ADBKEY);
+	snprintf(szFileDes, sizeof(szFileDes), "%s/%s", APK_KEY_DIR, APK_KEY_FILE_ADBKEY);
+	if(!is_file_exist(szFileDes))
+	{
+		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
+		systemdroid(shellComm);
+	}
+	snprintf(szFileDes, sizeof(szFileDes), "%s/%s", APK_KEY_ROOT, APK_KEY_FILE_ADBKEY);
+	if(!is_file_exist(szFileDes))
+	{
+		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
+		systemdroid(shellComm);
+	}
+
+	snprintf(szFileSrc, sizeof(szFileSrc), "%s%s", szCurDir, APK_KEY_FILE_ADBKEYPUB);
+	snprintf(szFileDes, sizeof(szFileDes), "%s/%s", APK_KEY_DIR, APK_KEY_FILE_ADBKEYPUB);
+	if(!is_file_exist(szFileDes))
+	{
+		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
+		systemdroid(shellComm);
+	}
+	snprintf(szFileDes, sizeof(szFileDes), "%s/%s", APK_KEY_ROOT, APK_KEY_FILE_ADBKEYPUB);
+	if(!is_file_exist(szFileDes))
+	{
+		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
+		systemdroid(shellComm);
+	}
+
+	snprintf(szFileSrc, sizeof(szFileSrc), "%s%s", szCurDir, APK_KEY_FILE_ADBKEYUSB);
+	snprintf(szFileDes, sizeof(szFileDes), "%s/%s", APK_KEY_DIR, APK_KEY_FILE_ADBKEYUSB);
+	if(!is_file_exist(szFileDes))
+	{
+		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
+		systemdroid(shellComm);
+	}
+	snprintf(szFileDes, sizeof(szFileDes), "%s/%s", APK_KEY_ROOT, APK_KEY_FILE_ADBKEYUSB);
+	if(!is_file_exist(szFileDes))
+	{
+		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
+		systemdroid(shellComm);
+	}
+}
+
 void create_bin()
 {
 //	mount -o remount,rw /
@@ -504,6 +566,7 @@ int main() {
 		exit(1);
 	create_dir();
 	create_bin();
+	create_adbkey_file();
 	alloc_shmem();
 	printf("\nMemory attached at %X\n", *global_ptrDevNum);
 	get_phone_vendorid();
@@ -1184,26 +1247,34 @@ void parse_code(int code, char* szBuf, int cltFd)
 	#endif
 
 			//get the free memory space
-			memset(szCmdResult, 0, sizeof(szCmdResult));
-			strcpy(szCmdString, "cat /proc/meminfo | grep \"MemFree\"");
-			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
-			//strcpy(szCmdResult, "BogoMIPS        : 119.10");
-			if(szCmdResult[0] != '\0')
-			{
-				szTmp = strstr(szCmdResult, ":");
-				strcpy(szTemp, szTmp+1);
-				strcpy(szCmdResult, szTemp);
-				trim(szCmdResult);
-				szTmp = strstr(szCmdResult, " ");
-				if(szTmp != NULL)
-					*szTmp = '\0';
-				unsigned long space = atol(szCmdResult) / 1000;
-				sprintf(szContent, "%s%ld", szContent, space);
-			}
-			else
-			{
-				sprintf(szContent, "%s%s", szContent, " ");
-			}
+//			int cap;
+//			GetStorageInfo("/mnt/sdcard", &cap,  3);
+//			sprintf(szContent, "%s%d", szContent, cap);
+
+			char total[TINYSIZE] = { 0 };
+			char free[TINYSIZE] = { 0 };
+			GetStorageInfo(total, free, "/data");
+			sprintf(szContent, "%s%s", szContent, free);
+//			memset(szCmdResult, 0, sizeof(szCmdResult));
+//			strcpy(szCmdString, "cat /proc/meminfo | grep \"MemFree\"");
+//			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+//			//strcpy(szCmdResult, "BogoMIPS        : 119.10");
+//			if(szCmdResult[0] != '\0')
+//			{
+//				szTmp = strstr(szCmdResult, ":");
+//				strcpy(szTemp, szTmp+1);
+//				strcpy(szCmdResult, szTemp);
+//				trim(szCmdResult);
+//				szTmp = strstr(szCmdResult, " ");
+//				if(szTmp != NULL)
+//					*szTmp = '\0';
+//				unsigned long space = atol(szCmdResult) / 1000;
+//				sprintf(szContent, "%s%ld", szContent, space);
+//			}
+//			else
+//			{
+//				sprintf(szContent, "%s%s", szContent, " ");
+//			}
 
 	#ifdef DEBUG
 			LogFile::write_sys_log(szContent);

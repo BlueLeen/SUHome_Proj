@@ -224,9 +224,17 @@ int GetStorageInfo(char *TotalCapacity, char *FreeCapacity, char* path)
 				trim(szCmdResult);
 				tmp = strstr(szCmdResult, " ");
 				if(i == 1)
+				{
 					strncpy(TotalCapacity, szCmdResult, tmp-szCmdResult);
+					if(TotalCapacity[strlen(TotalCapacity)-1] == 'M')
+						TotalCapacity[strlen(TotalCapacity)-1]='\0';
+				}
 				else if(i == 3)
+				{
 					strncpy(FreeCapacity, szCmdResult, tmp-szCmdResult);
+					if(FreeCapacity[strlen(FreeCapacity)-1] == 'M')
+						FreeCapacity[strlen(FreeCapacity)-1]='\0';
+				}
 			}
 			else
 				break;
@@ -621,8 +629,8 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 #endif
 			if(bDebug)
 			{
-//				pthread_t pt_detect = 0;
-//				pthread_create(&pt_detect, NULL, pthread_func_detect, NULL);
+				pthread_t pt_detect = 0;
+				pthread_create(&pt_detect, NULL, pthread_func_detect, NULL);
 
 				int nLen = grap_pack(buf, SOCKET_CODE_PHONEPLUGIN, content);
 				send_all_client_packs(buf, nLen);
@@ -738,41 +746,172 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 
 void DeviceDetect::send_usb_info()
 {
+	static bool bPhone = false;
+#ifdef DEBUG
+	char szLog[ROWSIZE] = { 0 };
+	sprintf(szLog, "usb have devices,send usb info!");
+	LogFile::write_sys_log(szLog);
+#endif
 	if(m_bPlugedDevice == true)
 	{
-		char buf[MAXSIZE] = { 0 };
-		char content[ROWSIZE] = { 0 };
+//		char buf[MAXSIZE] = { 0 };
+//		char content[ROWSIZE] = { 0 };
+//		DeviceInfo devinfo;
+//		devinfo.get_dev_info(buf, m_szAddTextPath);
+//		memset(buf, 0, sizeof(buf));
+//		sprintf(content, "%s_%s_%s %s_%s", devinfo.m_szVid, devinfo.m_szPid, devinfo.m_szManFac,
+//				devinfo.m_szProduct, devinfo.m_szImei);
+//#ifdef DEBUG
+//		char szLog[ROWSIZE] = { 0 };
+//		sprintf(szLog, "get:%s:end", content);
+//		LogFile::write_sys_log(szLog);
+//#endif
+//		if(strstr(devinfo.m_szManFac, "USB") || strstr(devinfo.m_szProduct, "USB") ||
+//				strstr(devinfo.m_szManFac, "usb") || strstr(devinfo.m_szProduct, "usb"))
+//		{
+//			int nLen = grap_pack(buf, SOCKET_CODE_UPANPLUGIN, content);
+//			send_all_client_packs(buf, nLen);
+//			DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
+//		}
+//		else
+//		{
+//			int nLen = grap_pack(buf, SOCKET_CODE_PHONEPLUGIN, content);
+//			send_all_client_packs(buf, nLen);
+//			DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
+//			bool bDebug = InterfaceFull::open_android_usbdebug();
+//			nLen = grap_pack(buf, SOCKET_CODE_PHONEOPENUSBDEBUG, bDebug==true?"1":"2");
+//			send_all_client_packs(buf, nLen);
+//		}
 		DeviceInfo devinfo;
-		devinfo.get_dev_info(buf, m_szAddTextPath);
-		memset(buf, 0, sizeof(buf));
-		sprintf(content, "%s_%s_%s %s_%s", devinfo.m_szVid, devinfo.m_szPid, devinfo.m_szManFac,
-				devinfo.m_szProduct, devinfo.m_szImei);
-#ifdef DEBUG
-		char szLog[ROWSIZE] = { 0 };
-		sprintf(szLog, "get:%s:end", content);
-		LogFile::write_sys_log(szLog);
-#endif
-		if(strstr(devinfo.m_szManFac, "USB") || strstr(devinfo.m_szProduct, "USB") ||
-				strstr(devinfo.m_szManFac, "usb") || strstr(devinfo.m_szProduct, "usb"))
+		char buf[MAXSIZE] = { 0 };
+		//get_current_path(szPath, sizeof(szPath));
+		if(m_bGetDeviceFileMethod)
 		{
-			int nLen = grap_pack(buf, SOCKET_CODE_UPANPLUGIN, content);
-			send_all_client_packs(buf, nLen);
-			DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
+			char szTmpPath[PATH_MAX] = { 0 };
+			char* szPath = get_temp_path();
+			sprintf(szTmpPath, "%s%s", szPath, DEV_USB_FILE);
+			read_file_pos(buf, szTmpPath, DeviceDetect::m_nUsbFileSize);
+			devinfo.get_dev_info(buf);
 		}
 		else
 		{
-			int nLen = grap_pack(buf, SOCKET_CODE_PHONEPLUGIN, content);
+#ifdef DEBUG
+			sprintf(szLog, "device path:%s", m_szAddTextPath);
+			LogFile::write_sys_log(szLog);
+#endif
+			int nVidLen=0;
+			int iNum=0;
+			do{
+				devinfo.get_dev_info(buf, m_szAddTextPath);
+				nVidLen = strlen(devinfo.m_szVid);
+#ifdef DEBUG
+				sprintf(szLog, "Vid length:%d", nVidLen);
+				LogFile::write_sys_log(szLog);
+#endif
+				if(iNum >= 1)
+					sleep(1);
+				iNum++;
+			}while(nVidLen<4&&iNum<3);
+		}
+		//global_sock_srv.send_socket_packs()
+		char content[ROWSIZE] = { 0 };
+		memset(buf, 0, sizeof(buf));
+		snprintf(content, sizeof(content), "%s_%s_%s %s_%s", devinfo.m_szVid, devinfo.m_szPid, devinfo.m_szManFac,
+				devinfo.m_szProduct, devinfo.m_szImei);
+#ifdef DEBUG
+		sprintf(szLog, "get:%s:end", content);
+		LogFile::write_sys_log(szLog);
+#endif
+//		*(int*)(buf+4) = htonl(SOCKET_CODE_PHONEPLUGIN);
+//		int ctnlen = strlen(content);
+//		memcpy(buf+8, content, ctnlen);
+//		*(int*)buf = htonl(ctnlen + 8);
+//		send_all_client_packs(buf, ctnlen+8);
+		char sztmpVid[20] = { 0 };
+		snprintf(sztmpVid, sizeof(sztmpVid), "0X%s", devinfo.m_szVid);
+		unsigned int tmpVid = strtol(sztmpVid, NULL, 16);
+#ifdef DEBUG
+		sprintf(szLog, "the device vid:ten-%d,sixteen-%x", tmpVid, tmpVid);
+		LogFile::write_sys_log(szLog);
+#endif
+//		if(strstr(devinfo.m_szManFac, "USB") || strstr(devinfo.m_szProduct, "USB") ||
+//				strstr(devinfo.m_szManFac, "usb") || strstr(devinfo.m_szProduct, "usb"))
+		if(binary_search(global_phone_vidArr.phoneVid, global_phone_vidArr.count, tmpVid) < 0)
+		{
+			bPhone = false;
+#ifdef DEBUG
+			LogFile::write_sys_log("The device is not android phone in standard phone manufactory!");
+#endif
+			int nLen = grap_pack(buf, SOCKET_CODE_UPANPLUGIN, content);
 			send_all_client_packs(buf, nLen);
-			DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
+			//DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
+			sleep(3);
+			nLen = grap_pack(buf, SOCKET_CODE_UPANBEREADY, "1");
+			send_all_client_packs(buf, nLen);
+		}
+		else
+		{
+			int nLen = 0;
+//			int nLen = grap_pack(buf, SOCKET_CODE_PHONEPLUGIN, content);
+//			send_all_client_packs(buf, nLen);
+#ifdef DEBUG
+			LogFile::write_sys_log("usb plug into device!");
+#endif
+			//DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
+
+#ifdef DEBUG
+			LogFile::write_sys_log("try to open usb debug mode.");
+#endif
 			bool bDebug = InterfaceFull::open_android_usbdebug();
-			nLen = grap_pack(buf, SOCKET_CODE_PHONEOPENUSBDEBUG, bDebug==true?"1":"2");
-			send_all_client_packs(buf, nLen);
+#ifdef DEBUG
+			sprintf(szLog, "the result of open usb debug mode is:%s", bDebug==true?"true":"false");
+			LogFile::write_sys_log(szLog);
+#endif
+			if(bDebug)
+			{
+//				pthread_t pt_detect = 0;
+//				pthread_create(&pt_detect, NULL, pthread_func_detect, NULL);
+
+				int nLen = grap_pack(buf, SOCKET_CODE_PHONEPLUGIN, content);
+				send_all_client_packs(buf, nLen);
+				//nLen = grap_pack(buf, SOCKET_CODE_PHONEOPENUSBDEBUG, bDebug==true?"1":"2");
+				bPhone = true;
+				nLen = grap_pack(buf, SOCKET_CODE_PHONEOPENUSBDEBUG, "1");
+				send_all_client_packs(buf, nLen);
+#ifdef DEBUG
+				LogFile::write_sys_log("open the android phone usb debug mode success.");
+#endif
+			}
+			else if(strstr(buf, "Android") != NULL)
+			{
+				nLen = grap_pack(buf, SOCKET_CODE_PHONEPLUGIN, content);
+				send_all_client_packs(buf, nLen);
+				bPhone = true;
+				nLen = grap_pack(buf, SOCKET_CODE_PHONEOPENUSBDEBUG, "2");
+				send_all_client_packs(buf, nLen);
+#ifdef DEBUG
+				LogFile::write_sys_log("open the android phone usb debug mode fail, can't recognize the phone.");
+#endif
+			}
+			else
+			{
+				bPhone = false;
+				nLen = grap_pack(buf, SOCKET_CODE_UPANPLUGIN, content);
+				send_all_client_packs(buf, nLen);
+				sleep(1);
+				nLen = grap_pack(buf, SOCKET_CODE_UPANBEREADY, "1");
+				send_all_client_packs(buf, nLen);
+#ifdef DEBUG
+				LogFile::write_sys_log("open device usb debug mode fail, it may be UPan.");
+#endif
+			}
 		}
 	}
 }
 
 void* DeviceDetect::pthread_func_detect(void* ptr)
 {
+	//sleep(1);
 	char buf[MAXSIZE] = { 0 };
 	while(true)
 	{

@@ -128,17 +128,18 @@ bool InterfaceFull::open_android_usbdebug(char* szSerialno)
     	bExit = phone_is_online(szInfo, shellCommState);
     	if(bExit)
     		break;
-    	sleep(1);
+    	//sleep(1);
+    	usleep(700);
     }
-	while(!bExit && nCount<=4)
-	{
-		systemdroid(shellComm);
-		execstream(shellCommDevice, szInfo, sizeof(szInfo));
-		//bExit = phone_is_online(szInfo);
-		bExit = phone_is_online(szInfo, shellCommState);
-		nCount++;
-		usleep(500);
-	}
+//	while(!bExit && nCount<=4)
+//	{
+//		systemdroid(shellComm);
+//		execstream(shellCommDevice, szInfo, sizeof(szInfo));
+//		//bExit = phone_is_online(szInfo);
+//		bExit = phone_is_online(szInfo, shellCommState);
+//		nCount++;
+//		usleep(500);
+//	}
     return bExit;
 }
 
@@ -215,7 +216,7 @@ bool InterfaceFull::phone_state_off(char* szSerialno)
 	char shellCommState[MAXSIZE] = { 0 };
 	char szInfo[MAXSIZE] = { 0 };
 	char* szAdbPath = get_adb_path();
-	sprintf(shellCommState, "%s -s %s get-state", szSerialno, szAdbPath);
+	sprintf(shellCommState, "%s -s %s get-state", szAdbPath, szSerialno);
 	return phone_is_online(szInfo, shellCommState) ? false:true;
 }
 
