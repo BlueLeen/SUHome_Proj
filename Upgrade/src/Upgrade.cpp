@@ -461,11 +461,20 @@ int main() {
 #endif
 	}
 	char szPathBack[PATH_MAX] = { 0 };
+	char szTmpBak[PATH_MAX] = { 0 };
 	strncpy(szPathBack, szPath, sizeof(szPathBack));
-	snprintf(szPath, sizeof(szPath), "%s.bak", szPath);
-	fileconvert(szPathBack, szPath);
+	snprintf(szTmpBak, sizeof(szTmpBak), "%s.bak", szPath);
+#ifdef DEBUG
+	sprintf(szLog, "before file convert, source file:%s, destination file:%s", szPathBack, szPath);
+	write_sys_log(szLog);
+#endif
+	fileconvert(szPathBack, szTmpBak);
+#ifdef DEBUG
+	sprintf(szLog, "after file convert.!");
+	write_sys_log(szLog);
+#endif
 	int nUpdate=0;
-	RegTool::GetPrivateProfileInt(UPGRADE, UPDATE, nUpdate, szPath, 0);
+	RegTool::GetPrivateProfileInt(UPGRADE, UPDATE, nUpdate, szTmpBak, 0);
 #ifdef DEBUG
 	sprintf(szLog, "update value is:%d.", nUpdate);
 	write_sys_log(szLog);
@@ -474,13 +483,13 @@ int main() {
 		return 1;
 	//KillProcess();
 	//RegTool::WritePrivateProfileInt(UPGRADE, SUCCESS, 1, szPath);
-	if(!CopyFile(szPath))
+	if(!CopyFile(szTmpBak))
 	{
 		//RegTool::WritePrivateProfileInt(UPGRADE, SUCCESS, 0, szPath);
 		RegTool::WritePrivateProfileInt(UPGRADE, SUCCESS, 0, szSetting);
 		exit(1);
 	}
-	if(!RunExe(szPath))
+	if(!RunExe(szTmpBak))
 	{
 		//RegTool::WritePrivateProfileInt(UPGRADE, SUCCESS, 0, szPath);
 		RegTool::WritePrivateProfileInt(UPGRADE, SUCCESS, 0, szSetting);
@@ -489,7 +498,23 @@ int main() {
 	//RegTool::WritePrivateProfileInt(UPGRADE, SUCCESS, 1, szPath);
 	RegTool::WritePrivateProfileInt(UPGRADE, SUCCESS, 1, szSetting);
 	int nReboot=0;
-	RegTool::GetPrivateProfileInt(UPGRADE, REBOOT, nReboot, szPath, 0);
+	RegTool::GetPrivateProfileInt(UPGRADE, REBOOT, nReboot, szTmpBak, 0);
+	if(is_file_exist(szTmpBak))
+	{
+		remove(szTmpBak);
+#ifdef DEBUG
+		sprintf(szLog, "remove file:%s succeed.!", szTmpBak);
+		write_sys_log(szLog);
+#endif
+	}
+	if(is_file_exist(szPath))
+	{
+		remove(szPath);
+#ifdef DEBUG
+		sprintf(szLog, "remove file:%s succeed.!", szPath);
+		write_sys_log(szLog);
+#endif
+	}
 	if(nReboot == 1)
 		systemdroid("reboot");
 //	else
