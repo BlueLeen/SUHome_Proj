@@ -16,6 +16,7 @@
 #include <limits.h>
 #include <dirent.h>
 #include <sys/time.h>
+#include <sys/resource.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -118,7 +119,7 @@ int grap_pack(void* buf, int nCode, const char* content);
 int extract_pack(void* buf, unsigned int& code, char* szContent);
 extern int systemdroid(const char * cmdstring);
 //extern int GetStorageInfo(char *TotalCapacity, char *FreeCapacity);
-extern int GetStorageInfo(char * MountPoint, int *Capacity,  int type);
+//extern int GetStorageInfo(char * MountPoint, int *Capacity,  int type);
 extern int GetStorageInfo(char *TotalCapacity, char *FreeCapacity, char* path);
 
 //int code_convert(char *from_charset,char *to_charset,char *inbuf,unsigned long int inlen,char *outbuf,unsigned long int outlen)

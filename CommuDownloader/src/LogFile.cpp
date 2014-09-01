@@ -45,7 +45,7 @@ LogFile::~LogFile() {
 //	return write_sys_log(szString, szFile);
 //}
 
-void LogFile::write_sys_log(char* szWriteString)
+void LogFile::write_sys_log(const char* szWriteString)
 {
 	char szLogPath[SIZE]={0};
 	FILE* fp;

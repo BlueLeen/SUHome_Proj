@@ -18,7 +18,7 @@ extern bool is_file_exist(const char *path);
 extern int execstream(const char *cmdstring, char *buf, int size);
 extern void trim(char* str, char trimstr=' ');
 
-int replacestr(char *sSrc, char *sMatchStr, char *sReplaceStr)
+int replacestr(char *sSrc, const char *sMatchStr, const char *sReplaceStr)
 {
         int  StringLen;
         char caNewString[ROWSIZE];
