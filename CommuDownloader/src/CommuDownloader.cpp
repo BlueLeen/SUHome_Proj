@@ -47,6 +47,7 @@ using namespace std;
 #define APK_DIR_PATH   "/data/local/tmp/strongunion/dir"
 #define APK_KEY_DIR  "/data/.android"
 #define APK_KEY_ROOT   "/root/.android"
+#define APK_ROOT   "/root"
 #define APK_KEY_FILE_ADBKEY  	"adbkey"
 #define APK_KEY_FILE_ADBKEYPUB  "adbkey.pub"
 #define APK_KEY_FILE_ADBKEYUSB  "adb_usb.ini"
@@ -423,6 +424,49 @@ void create_dir()
 		mkdir(APK_TEMP_PATH, S_IRWXU | S_IRWXG | S_IRWXO);
 }
 
+void copy_file(const char* srcFile, char* desFile)
+{
+	int from_fd, to_fd;
+	int bytes_read, bytes_write;
+	char buffer[BUFSIZ];
+	char *ptr;
+	if ((from_fd = open(srcFile, O_RDONLY)) == -1) /*open file readonly,返回-1表示出错，否则返回文件描述符*/
+	{
+		fprintf(stderr, "Open %s Error:%s\n", srcFile, strerror(errno));
+		return;
+	}
+	if ((to_fd = open(desFile, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR)) == -1) {
+		fprintf(stderr, "Open %s Error:%s\n", desFile, strerror(errno));
+		exit(1);
+	}
+	while ((bytes_read = read(from_fd, buffer, BUFSIZ))) {
+		/* 一个致命的错误发生了 */
+		if ((bytes_read == -1) && (errno != EINTR))
+			break;
+		else if (bytes_read > 0) {
+			ptr = buffer;
+			while ((bytes_write = write(to_fd, ptr, bytes_read))) {
+				/* 一个致命错误发生了 */
+				if ((bytes_write == -1) && (errno != EINTR))
+					break;
+				/* 写完了所有读的字节 */
+				else if (bytes_write == bytes_read)
+					break;
+				/* 只写了一部分,继续写 */
+				else if (bytes_write > 0) {
+					ptr += bytes_write;
+					bytes_read -= bytes_write;
+				}
+			}
+			/* 写的时候发生的致命错误 */
+			if (bytes_write == -1)
+				break;
+		}
+	}
+	close(from_fd);
+	close(to_fd);
+}
+
 void create_adbkey_file()
 {
 	char shellComm[MAXSIZE] = { 0 };
@@ -431,6 +475,8 @@ void create_adbkey_file()
 	if(!is_file_exist(APK_KEY_DIR ))
 		//mkdir(APK_DIR_PATH, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 		mkdir(APK_KEY_DIR, S_IRWXU);
+	if(!is_file_exist(APK_ROOT))
+		mkdir(APK_ROOT, S_IRWXU);
 	if(!is_file_exist(APK_KEY_ROOT))
 		mkdir(APK_KEY_ROOT, S_IRWXU);
 	char* szCurDir = get_current_path();
@@ -439,42 +485,70 @@ void create_adbkey_file()
 	snprintf(szFileDes, sizeof(szFileDes), "%s/%s", APK_KEY_DIR, APK_KEY_FILE_ADBKEY);
 	if(!is_file_exist(szFileDes))
 	{
-		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
-		systemdroid(shellComm);
+//		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
+//		systemdroid(shellComm);
+		copy_file(szFileSrc, szFileDes);
 	}
 	snprintf(szFileDes, sizeof(szFileDes), "%s/%s", APK_KEY_ROOT, APK_KEY_FILE_ADBKEY);
 	if(!is_file_exist(szFileDes))
 	{
-		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
-		systemdroid(shellComm);
+//		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
+//		systemdroid(shellComm);
+		copy_file(szFileSrc, szFileDes);
 	}
+
+#ifdef DEBUG
+		char szLog[MINSIZE] = { 0 };
+		sprintf(szLog, "copy key file to the special directory.");
+		LogFile::write_sys_log(szLog);
+#endif
 
 	snprintf(szFileSrc, sizeof(szFileSrc), "%s%s", szCurDir, APK_KEY_FILE_ADBKEYPUB);
 	snprintf(szFileDes, sizeof(szFileDes), "%s/%s", APK_KEY_DIR, APK_KEY_FILE_ADBKEYPUB);
 	if(!is_file_exist(szFileDes))
 	{
-		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
-		systemdroid(shellComm);
+//		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
+//		systemdroid(shellComm);
+		copy_file(szFileSrc, szFileDes);
+#ifdef DEBUG
+		sprintf(szLog, "command:%s", shellComm);
+		LogFile::write_sys_log(szLog);
+#endif
 	}
 	snprintf(szFileDes, sizeof(szFileDes), "%s/%s", APK_KEY_ROOT, APK_KEY_FILE_ADBKEYPUB);
 	if(!is_file_exist(szFileDes))
 	{
-		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
-		systemdroid(shellComm);
+//		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
+//		systemdroid(shellComm);
+		copy_file(szFileSrc, szFileDes);
+#ifdef DEBUG
+		sprintf(szLog, "command:%s", shellComm);
+		LogFile::write_sys_log(szLog);
+#endif
 	}
 
 	snprintf(szFileSrc, sizeof(szFileSrc), "%s%s", szCurDir, APK_KEY_FILE_ADBKEYUSB);
 	snprintf(szFileDes, sizeof(szFileDes), "%s/%s", APK_KEY_DIR, APK_KEY_FILE_ADBKEYUSB);
 	if(!is_file_exist(szFileDes))
 	{
-		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
-		systemdroid(shellComm);
+//		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
+//		systemdroid(shellComm);
+		copy_file(szFileSrc, szFileDes);
+#ifdef DEBUG
+		sprintf(szLog, "command:%s", shellComm);
+		LogFile::write_sys_log(szLog);
+#endif
 	}
 	snprintf(szFileDes, sizeof(szFileDes), "%s/%s", APK_KEY_ROOT, APK_KEY_FILE_ADBKEYUSB);
 	if(!is_file_exist(szFileDes))
 	{
-		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
-		systemdroid(shellComm);
+//		snprintf(shellComm, sizeof(shellComm), "cp %s %s", szFileSrc, szFileDes);
+//		systemdroid(shellComm);
+		copy_file(szFileSrc, szFileDes);
+#ifdef DEBUG
+		sprintf(szLog, "command:%s", shellComm);
+		LogFile::write_sys_log(szLog);
+#endif
 	}
 }
 
