@@ -123,13 +123,17 @@ bool InterfaceFull::open_android_usbdebug(char* szSerialno)
 	sprintf(shellCommState, "%s -s %s get-state", szAdbPath, szSerialno);
 	sprintf(szFile, "%s/%s", APK_TEMP_PATH, "text");
 	//sprintf(shellCommDevice, "%s devices > %s", szAdbPath, szFile);
-    for(int i=0; i<4; i++)
+	//systemdroid(shellCommDevice);
+#ifdef DEBUG
+	LogFile::write_sys_log(shellCommState);
+#endif
+    for(int i=0; i<5; i++)
     {
     	bExit = phone_is_online(szInfo, shellCommState);
     	if(bExit)
     		break;
-    	//sleep(1);
-    	usleep(700);
+    	sleep(1);
+    	//usleep(700);
     }
 //	while(!bExit && nCount<=4)
 //	{

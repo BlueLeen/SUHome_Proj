@@ -111,6 +111,7 @@ int* global_ptrDevNum;
 
 extern char* get_current_path();
 extern char* get_current_path(char* szPath, int nLen);
+extern int replacestr(char *sSrc, const char *sMatchStr, const char *sReplaceStr);
 
 static void* pthread_func_recv(void*);
 static void* pthread_func_recv_parse(void*);
@@ -121,7 +122,7 @@ int extract_pack(void* buf, unsigned int& code, char* szContent);
 extern int systemdroid(const char * cmdstring);
 //extern int GetStorageInfo(char *TotalCapacity, char *FreeCapacity);
 //extern int GetStorageInfo(char * MountPoint, int *Capacity,  int type);
-extern int GetStorageInfo(char *TotalCapacity, char *FreeCapacity, char* path);
+extern int GetStorageInfo(char *TotalCapacity, char *FreeCapacity, const char* path);
 
 //int code_convert(char *from_charset,char *to_charset,char *inbuf,unsigned long int inlen,char *outbuf,unsigned long int outlen)
 //{
@@ -641,7 +642,9 @@ int main() {
 		exit(1);
 	create_dir();
 	create_bin();
+#ifndef NOTCREATADBKEYFILE
 	create_adbkey_file();
+#endif
 	alloc_shmem();
 	printf("\nMemory attached at %X\n", *global_ptrDevNum);
 	get_phone_vendorid();
@@ -786,6 +789,38 @@ static void* pthread_func_recv_parse(void* pSckCltBuf)
 	parse_code(code, szContent, pscb->clientFd);
 	free(pscb->pBuf);
 	delete pscb;
+	return NULL;
+}
+
+typedef struct _installApkInfo
+{
+	char apkName[MINSIZE];
+	char phoneSerial[MINSIZE];
+	int clientFd;
+}InstallApkInfo;
+static void* pthread_func_install_apk(void* apkinfo)
+{
+	char buf[BUFSIZ] = { 0 };
+	char szPath[PATH_MAX] = { 0 };
+	InstallApkInfo* iai = (InstallApkInfo*) apkinfo;
+	char szApkPath[PATH_MAX] = { 0 };
+	get_current_path(szPath, sizeof(szPath));
+	sprintf(szApkPath, "%s%s/%s", szPath, APK_DIR_NAME, iai->apkName);
+#ifdef DEBUG
+	char szLog[MINSIZE] = { 0 };
+	sprintf(szLog, "Phone:%s, begin istall apk:%s...",
+			iai->phoneSerial, iai->apkName);
+	LogFile::write_sys_log(szLog);
+#endif
+	int result = InterfaceFull::install_android_apk(szApkPath, iai->phoneSerial);
+
+	char szContent[ROWSIZE] = { 0 };
+	replacestr(iai->phoneSerial,"_","###");
+	sprintf(szContent, "%s_%d_%s", iai->apkName, result, iai->phoneSerial);
+	int len = grap_pack(buf, SOCKET_CODE_INSTALLAPK, szContent);
+	global_sock_srv.send_socket_packs(buf, len, iai->clientFd);
+
+	delete iai;
 	return NULL;
 }
 
@@ -1027,6 +1062,22 @@ int get_upgrade_result()
 	return nSuccess;
 }
 
+//void handle_phone_imei(char* imei)
+//{
+//	char* tmp = strstr(imei, "###");
+//	if(tmp != NULL)
+//	{
+//		*tmp = '_';
+//		tmp++;
+//		char* tmpMove = tmp + 2;
+//		while(*tmpMove)
+//		{
+//			*tmp++ = * tmpMove++;
+//		}
+//		tmp = '\0';
+//	}
+//}
+
 void parse_code(int code, char* szBuf, int cltFd)
 {
 	try
@@ -1083,22 +1134,54 @@ void parse_code(int code, char* szBuf, int cltFd)
 		}
 		else if(code == SOCKET_CODE_INSTALLAPK)
 		{
-			char coninfo[3][MINSIZE];
-			extract_content_info(szBuf, coninfo, 1);
+//			char coninfo[3][MINSIZE];
+//			extract_content_info(szBuf, coninfo, 1);
+//	#ifdef DEBUG
+//			char szLog[MINSIZE] = { 0 };
+//			sprintf(szLog, "The content's %d fields value is:%s", 1,
+//					coninfo[0]);
+//			LogFile::write_sys_log(szLog);
+//	#endif
+//			char szApkPath[PATH_MAX] = { 0 };
+//			get_current_path(szPath, sizeof(szPath));
+//			sprintf(szApkPath, "%s%s/%s", szPath, APK_DIR_NAME, coninfo[0]);
+//			int result = InterfaceFull::install_android_apk(szApkPath);
+//			char szContent[ROWSIZE] = { 0 };
+//			sprintf(szContent, "%s_%d", coninfo[0], result);
+//			int len = grap_pack(buf, SOCKET_CODE_INSTALLAPK, szContent);
+//			global_sock_srv.send_socket_packs(buf, len, cltFd);
+
+			char coninfo[3][MINSIZE] = {{0}, {0}, {0}};
+			extract_content_info(szBuf, coninfo, 2);
 	#ifdef DEBUG
 			char szLog[MINSIZE] = { 0 };
-			sprintf(szLog, "The content's %d fields value is:%s", 1,
-					coninfo[0]);
+			sprintf(szLog, "The content's %d fields value is:%s %s", 2,
+					coninfo[0], coninfo[1]);
 			LogFile::write_sys_log(szLog);
 	#endif
-			char szApkPath[PATH_MAX] = { 0 };
-			get_current_path(szPath, sizeof(szPath));
-			sprintf(szApkPath, "%s%s/%s", szPath, APK_DIR_NAME, coninfo[0]);
-			int result = InterfaceFull::install_android_apk(szApkPath);
-			char szContent[ROWSIZE] = { 0 };
-			sprintf(szContent, "%s_%d", coninfo[0], result);
-			int len = grap_pack(buf, SOCKET_CODE_INSTALLAPK, szContent);
-			global_sock_srv.send_socket_packs(buf, len, cltFd);
+			replacestr(coninfo[1], "###", "_");
+			//handle_phone_imei(coninfo[1]);
+
+#ifdef DEBUG
+			sprintf(szLog, "after handle the iphone imei:%s",  coninfo[1]);
+			LogFile::write_sys_log(szLog);
+#endif
+
+			pthread_t pt_install;
+			InstallApkInfo* iai = new InstallApkInfo();
+			iai->clientFd = cltFd;
+			strcpy(iai->apkName, coninfo[0]);
+			strcpy(iai->phoneSerial, coninfo[1]);
+			pthread_create(&pt_install, NULL, pthread_func_install_apk, iai);
+
+//			char szApkPath[PATH_MAX] = { 0 };
+//			get_current_path(szPath, sizeof(szPath));
+//			sprintf(szApkPath, "%s%s/%s", szPath, APK_DIR_NAME, coninfo[0]);
+//			int result = InterfaceFull::install_android_apk(szApkPath, coninfo[1]);
+//			char szContent[ROWSIZE] = { 0 };
+//			sprintf(szContent, "%s_%d", coninfo[0], result);
+//			int len = grap_pack(buf, SOCKET_CODE_INSTALLAPK, szContent);
+//			global_sock_srv.send_socket_packs(buf, len, cltFd);
 		}
 		else if(code == SOCKET_CODE_GETAPKLIST)//get apk list
 		{
