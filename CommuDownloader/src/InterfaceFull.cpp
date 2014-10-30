@@ -127,6 +127,7 @@ bool InterfaceFull::open_android_usbdebug(char* szSerialno)
 #ifdef DEBUG
 	LogFile::write_sys_log(shellCommState);
 #endif
+	InterfaceFull::start_adb();
     for(int i=0; i<5; i++)
     {
     	bExit = phone_is_online(szInfo, shellCommState);
@@ -145,6 +146,46 @@ bool InterfaceFull::open_android_usbdebug(char* szSerialno)
 //		usleep(500);
 //	}
     return bExit;
+}
+
+void InterfaceFull::start_adb()
+{
+	char szInfo[MAXSIZE] = { 0 };
+	char shellCommDevice[MAXSIZE] = { 0 };
+	sprintf(shellCommDevice, "%s devices", get_adb_path());
+	int iNum=0;
+	FILE* stream;
+	stream = popen(shellCommDevice, "r");
+	if(NULL == stream)
+	{
+		LogFile::write_sys_log("execute adb command start_adb failed!");
+		strcpy(szInfo, "failed");
+	}
+	else
+	{
+		int j=0;
+		while(NULL != fgets(szInfo, sizeof(szInfo), stream))
+		{
+			if(j==0)
+			{
+				j++;
+				continue;
+			}
+			iNum++;
+		}
+		pclose(stream);
+	}
+	if(iNum == 1)
+	{
+		LogFile::write_sys_log("restart adb server!");
+		char szAdbPath[PATH_MAX] = { 0 };
+		char shellComm[MAXSIZE] = { 0 };
+		sprintf(szAdbPath, "%s%s", get_current_path(), ADB_ADB_NAME);
+		sprintf(shellComm, "%s kill-server", ADB_ADB_NAME);
+		systemdroid(shellComm);
+		sprintf(shellComm, "%s start-server", szAdbPath);
+		systemdroid(shellComm);
+	}
 }
 
 bool InterfaceFull::open_android_usbdebug()
@@ -259,6 +300,12 @@ int InterfaceFull::install_android_apk(char* szApk, char* szSerialno)
 	LogFile::write_sys_log(shellComm);
 #endif
 	int result = execstream(shellComm, szInfo, sizeof(szInfo));
+	if(result == 0 && szInfo[0] == 'S')
+		result = 0;
+	else if(result == 0 && szInfo[0] == 'F')
+		result = 1;
+	else
+		result = 2;
 #ifdef DEBUG
 	LogFile::write_sys_log(szInfo);
 #endif

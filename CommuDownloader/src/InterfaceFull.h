@@ -24,6 +24,7 @@ public:
 
 	static int install_android_apk(char* szApk);
 	static int install_android_apk(char* szApk, char* szSerialno);
+	static void start_adb();
 	static bool open_android_usbdebug();
 	static bool open_android_usbdebug(char* szSerialno);
 	static bool phone_state_off();
