@@ -177,7 +177,9 @@ void InterfaceFull::start_adb()
 	}
 	if(iNum == 1)
 	{
+#ifdef _DEBUG
 		LogFile::write_sys_log("restart adb server!");
+#endif
 		char szAdbPath[PATH_MAX] = { 0 };
 		char shellComm[MAXSIZE] = { 0 };
 		sprintf(szAdbPath, "%s%s", get_current_path(), ADB_ADB_NAME);

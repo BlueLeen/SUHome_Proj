@@ -1416,7 +1416,7 @@ void parse_code(int code, char* szBuf, int cltFd)
 			LogFile::write_sys_log(szContent);
 	#endif
 			//get the rom version
-			strcat(szContent, "2.0_");
+			strcat(szContent, "2.1_");
 //			memset(szCmdResult, 0, sizeof(szCmdResult));
 //			strcpy(szCmdString, "cat /system/build.prop | grep \"ro.build.version.release\"");
 //			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
