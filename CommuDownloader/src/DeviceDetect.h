@@ -12,19 +12,26 @@
 #include <iostream>
 #include <limits.h>
 #include <string.h>
+#include<signal.h>
 #include "DeviceInfo.h"
+#include "LogFile.h"
 
 using std::string;
 
 typedef struct _USBHUB
 {
-	_USBHUB():usbNum(0),bInUse(false),type(0),state(0),phoneOpenUsbDebug(false)
+	_USBHUB():usbNum(0),bInUse(false),type(0),state(0),phoneOpenUsbDebug(false),hubThreadId(0)
 	{
 		memset(addpath, 0, sizeof(addpath));
 		memset(phoneImei, 0, sizeof(phoneImei));
 	}
 	void clear()
 	{
+#ifdef DEBUG
+		char szLog[200] = { 0 };
+		sprintf(szLog, "Clear::::Hub is number:%d, hub thread id is:%d, phone imei:%s", usbNum, hubThreadId, phoneImei);
+		LogFile::write_sys_log(szLog);
+#endif
 		usbNum = 0;
 		bInUse=false;
 		type=0;
@@ -32,14 +39,36 @@ typedef struct _USBHUB
 		memset(addpath, 0, sizeof(addpath));
 		memset(phoneImei, 0, sizeof(phoneImei));
 		phoneOpenUsbDebug=false;
+		if(hubThreadId  != 0)
+		{
+#ifdef DEBUG
+		LogFile::write_sys_log("begin to kill the install thread...");
+#endif
+			//pthread_exit(hubThreadPointer);
+		//pthread_kill(hubThreadId, SIGUSR1);
+		//pthread_kill(hubThreadId, SIGKILL);
+		pthread_cancel(hubThreadId);
+//#ifdef DEBUG
+//		LogFile::write_sys_log("kill the install thread in progress...");
+//#endif
+//		pthread_join(hubThreadId,  &status);
+//#ifdef DEBUG
+//		LogFile::write_sys_log("end to kill the install thread...");
+//#endif
+		}
+		hubThreadId=0;
 	}
 	int usbNum; //(0-8)
 	bool bInUse;
 	int type; //1-UPan;2-Phone;3-USB Hub;4:sdcard
 	int state;
-	char addpath[PATH_MAX];
-	char phoneImei[100];//the phone's imei number
+	//char addpath[PATH_MAX];
+	char addpath[200];
+	//char phoneImei[100];//the phone's imei number
+	char phoneImei[10];//the phone's imei number
 	bool phoneOpenUsbDebug;
+	//void* hubThreadPointer;
+	int hubThreadId;
 }USBHUB;
 
 

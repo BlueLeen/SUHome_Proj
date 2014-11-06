@@ -27,7 +27,7 @@
 
 extern SerialLine* global_ptrSl;
 extern int* global_ptrDevNum;
-extern void shmem_rw();
+//extern void shmem_rw();
 
 char* get_current_path();
 
@@ -194,7 +194,7 @@ bool InterfaceFull::open_android_usbdebug()
 {
 	int nCount = 0;
 	//m_nCount = 0;
-	shmem_rw();
+	//shmem_rw();
 	//LogFile::write_sys_log(*global_ptrDevNum);
 	(*global_ptrDevNum) = 0;
 	//LogFile::write_sys_log(*global_ptrDevNum);
@@ -316,7 +316,7 @@ int InterfaceFull::install_android_apk(char* szApk, char* szSerialno)
 
 int InterfaceFull::install_android_apk(char* szApk)
 {
-	shmem_rw();
+	//shmem_rw();
 #ifdef DEBUG
 	char szLog[MINSIZE] = { 0 };
 	//snprintf(szLog, sizeof(szLog), "before start install apk::phone count:%d,phone serialno:%s.", m_nCount, m_Sl[0].szSerial);

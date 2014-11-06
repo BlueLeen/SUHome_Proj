@@ -17,7 +17,6 @@
 #include <sys/statfs.h>
 //#include <sys/stat.h>
 #include "PlugEvent.h"
-#include "LogFile.h"
 #include "SocketSeal.h"
 #include "InterfaceFull.h"
 #include "CLock.h"
@@ -51,6 +50,7 @@ extern int grap_pack(void* buf, int nCode, const char* content);
 extern int execstream(const char *cmdstring, char *buf, int size);
 extern void trim(char* str, char trimstr=' ');
 extern int replacestr(char *sSrc, const char *sMatchStr, const char *sReplaceStr);
+extern void shmem_rw_uh();
 typedef struct _PHONEVID
 {
 	_PHONEVID():count(0)
@@ -62,7 +62,10 @@ typedef struct _PHONEVID
 }PHONEVID;
 extern PHONEVID global_phone_vidArr;
 
-USBHUB global_hub_info[10];
+extern int* global_ptrHubNum;
+extern USBHUB* global_ptrUh[10];
+
+//USBHUB global_hub_info[10];
 
 //extern bool is_file_exist(const char *path);
 
@@ -376,6 +379,7 @@ void DeviceDetect::plug_dev_detect() {
 //		DeviceDetect::m_bGetDeviceFileMethod = false;
 	DeviceDetect::m_bGetDeviceFileMethod = false;
 	DeviceDetect::m_bPlugedDevice = false;
+
 	pthread_create(&pt_plug, NULL, pthread_func_plug, NULL);
 }
 
@@ -385,7 +389,21 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 
 	DeviceDetect::m_nUsbFileSize = get_file_size(DEV_USB_FILE);
 
+#ifdef DEBUG
+	char szLog[ROWSIZE] = { 0 };
+#endif
+
 	PlugEvent event;
+
+#ifdef DEBUG
+	LogFile::write_sys_log("start map share memory.");
+#endif
+	shmem_rw_uh();
+#ifdef DEBUG
+	sprintf(szLog, "get the map memory::: num:%p->%d, pointer:%p",global_ptrHubNum, *global_ptrHubNum, global_ptrUh);
+	LogFile::write_sys_log(szLog);
+	LogFile::write_sys_log("end map share memory.");
+#endif
 
 	while(1)
 	{
@@ -395,9 +413,6 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 		recvlen = event.recv_hotplug_sock(buf, sizeof(buf));
 		if(recvlen > 0)
 		{
-#ifdef DEBUG
-			char szLog[ROWSIZE] = { 0 };
-#endif
 #ifdef NETLINKDEBUG
 			LogFile::write_sys_log(buf);
 #endif
@@ -412,13 +427,18 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 			}
 			if(nState == 1)
 			{
+//#ifdef DEBUG
+//					LogFile::write_sys_log("nState = 1");
+//#endif
 				if(usb_plug_dev(buf, usbNum, strlen(buf)))
 				{
 #ifdef DEBUG
 					sprintf(szLog, "add device,usb number is:%d", usbNum);
 					LogFile::write_sys_log(szLog);
 #endif
-					USBHUB* pHub = &global_hub_info[usbNum];
+					//USBHUB* pHub = &global_hub_info[usbNum];
+					//USBHUB* pHub = global_ptrUh + usbNum*sizeof(USBHUB);
+					USBHUB* pHub = global_ptrUh[usbNum];
 					pHub->state = nState;
 					char* szText = strstr(buf, "@");
 					if(szText != NULL)
@@ -440,7 +460,9 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 					sprintf(szLog, "remove device,usb number is:%d", usbNum);
 					LogFile::write_sys_log(szLog);
 #endif
-					USBHUB* pHub = &global_hub_info[usbNum];
+					//USBHUB* pHub = &global_hub_info[usbNum];
+					//USBHUB* pHub = global_ptrUh + usbNum*sizeof(USBHUB);
+					USBHUB* pHub = global_ptrUh[usbNum];
 					pHub->state = nState;
 					pthread_create(&pt_recv, NULL, pthread_func_call, (void*)pHub);
 #ifdef DEBUG
@@ -454,7 +476,9 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 				unsigned long curTime = GetTickCount();
 				if(curTime - m_lastSdAddTime > 3000)
 				{
-					USBHUB* pHub = &global_hub_info[9];
+					//USBHUB* pHub = &global_hub_info[9];
+					//USBHUB* pHub = global_ptrUh + 9*sizeof(USBHUB);
+					USBHUB* pHub = global_ptrUh[9];
 					pHub->state = nState;
 					pHub->type = 4;
 					pHub->bInUse = true;
@@ -477,7 +501,9 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 				unsigned long curTime = GetTickCount();
 				if(curTime - m_lastSdRemoveTime > 3000)
 				{
-					USBHUB* pHub = &global_hub_info[9];
+					//USBHUB* pHub = &global_hub_info[9];
+					//USBHUB* pHub = global_ptrUh + 9*sizeof(USBHUB);
+					USBHUB* pHub = global_ptrUh[9];
 					pHub->state = nState;
 					pHub->type = 4;
 					pHub->bInUse = false;
@@ -627,10 +653,13 @@ int DeviceDetect::plug_opp_dev(char* usb_message, int nLen)
 
 int DeviceDetect::plug_opp_dev(char* usb_message)
 {
+	//add
 	if(usb_message[0] == 'a')
 		return 1;
+	//change
 	else if(usb_message[0] == 'c')
 		return 2;
+	//remove
 	else if(usb_message[0] == 'r')
 		return 3;
 	else
@@ -666,15 +695,19 @@ bool DeviceDetect::usb_plug_dev(const char* buf, int& num)
 	long long free = 0;
 	if(!strcmp(buf, USB_HUB0_ADD))
 	{
-		if(global_hub_info[0].bInUse)
+		//if(global_hub_info[0].bInUse)
+		if(((USBHUB*)global_ptrUh)->bInUse)
 			return false;
-		global_hub_info[0].usbNum = 0;
-		global_hub_info[0].bInUse = true;
+		//global_hub_info[0].usbNum = 0;
+		//global_hub_info[0].bInUse = true;
+		((USBHUB*)global_ptrUh)->usbNum = 0;
+		((USBHUB*)global_ptrUh)->bInUse = true;
 		int size = 0;
 		size = getFsSize(DEV_USB_PATH, &total, &free);
 		if(size > 0)
 		{
-			global_hub_info[0].type = 1;
+			//global_hub_info[0].type = 1;
+			((USBHUB*)global_ptrUh)->type = 1;
 #ifdef DEBUG
 			sprintf(szLog, "The usb storage size is:%d MB!", size);
 			LogFile::write_sys_log(szLog);
@@ -687,13 +720,16 @@ bool DeviceDetect::usb_plug_dev(const char* buf, int& num)
 	{
 //		if(global_hub_info[1].bInUse)
 //			return false;
-		global_hub_info[1].usbNum = 1;
-		global_hub_info[1].bInUse = true;
+		//global_hub_info[1].usbNum = 1;
+		//global_hub_info[1].bInUse = true;
+		((USBHUB*)(global_ptrUh+sizeof(USBHUB)))->usbNum = 1;
+		((USBHUB*)(global_ptrUh+sizeof(USBHUB)))->bInUse = true;
 		int size = 0;
 		size = getFsSize(DEV_USB_PATH, &total, &free);
 		if(size > 0)
 		{
-			global_hub_info[1].type = 1;
+			//global_hub_info[1].type = 1;
+			((USBHUB*)(global_ptrUh+sizeof(USBHUB)))->type = 1;
 #ifdef DEBUG
 			sprintf(szLog, "The usb storage size is:%d MB!", size);
 			LogFile::write_sys_log(szLog);
@@ -706,13 +742,16 @@ bool DeviceDetect::usb_plug_dev(const char* buf, int& num)
 	{
 //		if(global_hub_info[2].bInUse)
 //			return false;
-		global_hub_info[2].usbNum = 2;
-		global_hub_info[2].bInUse = true;
+		//global_hub_info[2].usbNum = 2;
+		//global_hub_info[2].bInUse = true;
+		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*2))->usbNum = 2;
+		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*2))->bInUse = true;
 		int size = 0;
 		size = getFsSize(DEV_USB_PATH, &total, &free);
 		if(size > 0)
 		{
-			global_hub_info[2].type = 1;
+			//global_hub_info[2].type = 1;
+			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*2))->type = 1;
 #ifdef DEBUG
 			sprintf(szLog, "The usb storage size is:%d MB!", size);
 			LogFile::write_sys_log(szLog);
@@ -725,13 +764,16 @@ bool DeviceDetect::usb_plug_dev(const char* buf, int& num)
 	{
 //		if(global_hub_info[3].bInUse)
 //			return false;
-		global_hub_info[3].usbNum = 3;
-		global_hub_info[3].bInUse = true;
+		//global_hub_info[3].usbNum = 3;
+		//global_hub_info[3].bInUse = true;
+		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*3))->usbNum = 3;
+		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*3))->bInUse = true;
 		int size = 0;
 		size = getFsSize(DEV_USB_PATH, &total, &free);
 		if(size > 0)
 		{
-			global_hub_info[3].type = 1;
+			//global_hub_info[3].type = 1;
+			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*3))->type = 1;
 #ifdef DEBUG
 			sprintf(szLog, "The usb storage size is:%d MB!", size);
 			LogFile::write_sys_log(szLog);
@@ -744,13 +786,16 @@ bool DeviceDetect::usb_plug_dev(const char* buf, int& num)
 	{
 //		if(global_hub_info[4].bInUse)
 //			return false;
-		global_hub_info[4].usbNum = 4;
-		global_hub_info[4].bInUse = true;
+		//global_hub_info[4].usbNum = 4;
+		//global_hub_info[4].bInUse = true;
+		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*4))->usbNum = 4;
+		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*4))->bInUse = true;
 		int size = 0;
 		size = getFsSize(DEV_USB_PATH, &total, &free);
 		if(size > 0)
 		{
-			global_hub_info[4].type = 1;
+			//global_hub_info[4].type = 1;
+			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*4))->type = 1;
 #ifdef DEBUG
 			sprintf(szLog, "The usb storage size is:%d MB!", size);
 			LogFile::write_sys_log(szLog);
@@ -763,13 +808,16 @@ bool DeviceDetect::usb_plug_dev(const char* buf, int& num)
 	{
 //		if(global_hub_info[5].bInUse)
 //			return false;
-		global_hub_info[5].usbNum = 5;
-		global_hub_info[5].bInUse = true;
+		//global_hub_info[5].usbNum = 5;
+		//global_hub_info[5].bInUse = true;
+		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*5))->usbNum = 5;
+		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*5))->bInUse = true;
 		int size = 0;
 		size = getFsSize(DEV_USB_PATH, &total, &free);
 		if(size > 0)
 		{
-			global_hub_info[5].type = 1;
+			//global_hub_info[5].type = 1;
+			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*5))->type = 1;
 #ifdef DEBUG
 			sprintf(szLog, "The usb storage size is:%d MB!", size);
 			LogFile::write_sys_log(szLog);
@@ -782,13 +830,16 @@ bool DeviceDetect::usb_plug_dev(const char* buf, int& num)
 	{
 //		if(global_hub_info[6].bInUse)
 //			return false;
-		global_hub_info[6].usbNum = 6;
-		global_hub_info[6].bInUse = true;
+		//global_hub_info[6].usbNum = 6;
+		//global_hub_info[6].bInUse = true;
+		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*6))->usbNum = 6;
+		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*6))->bInUse = true;
 		int size = 0;
 		size = getFsSize(DEV_USB_PATH, &total, &free);
 		if(size > 0)
 		{
-			global_hub_info[6].type = 1;
+			//global_hub_info[6].type = 1;
+			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*6))->type = 1;
 #ifdef DEBUG
 			sprintf(szLog, "The usb storage size is:%d MB!", size);
 			LogFile::write_sys_log(szLog);
@@ -801,13 +852,16 @@ bool DeviceDetect::usb_plug_dev(const char* buf, int& num)
 	{
 //		if(global_hub_info[7].bInUse)
 //			return false;
-		global_hub_info[7].usbNum = 7;
-		global_hub_info[7].bInUse = true;
+		//global_hub_info[7].usbNum = 7;
+		//global_hub_info[7].bInUse = true;
+		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*7))->usbNum = 7;
+		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*7))->bInUse = true;
 		int size = 0;
 		size = getFsSize(DEV_USB_PATH, &total, &free);
 		if(size > 0)
 		{
-			global_hub_info[7].type = 1;
+			//global_hub_info[7].type = 1;
+			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*7))->type = 1;
 #ifdef DEBUG
 			sprintf(szLog, "The usb storage size is:%d MB!", size);
 			LogFile::write_sys_log(szLog);
@@ -820,13 +874,16 @@ bool DeviceDetect::usb_plug_dev(const char* buf, int& num)
 	{
 //		if(global_hub_info[8].bInUse)
 //			return false;
-		global_hub_info[8].usbNum = 8;
-		global_hub_info[8].bInUse = true;
+		//global_hub_info[8].usbNum = 8;
+		//global_hub_info[8].bInUse = true;
+		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*8))->usbNum = 8;
+		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*8))->bInUse = true;
 		int size = 0;
 		size = getFsSize(DEV_USB_PATH, &total, &free);
 		if(size > 0)
 		{
-			global_hub_info[8].type = 1;
+			//global_hub_info[8].type = 1;
+			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*8))->type = 1;
 #ifdef DEBUG
 			sprintf(szLog, "The usb storage size is:%d MB!", size);
 			LogFile::write_sys_log(szLog);
@@ -856,10 +913,21 @@ bool DeviceDetect::usb_plug_dev(const char* buf, int& num, int len)
 	{
 		return false;
 	}
-	if(num==0 && global_hub_info[0].bInUse)
+	//if(num==0 && global_hub_info[0].bInUse)
+//#ifdef DEBUG
+//	LogFile::write_sys_log("tttttttttttttttttt");
+//	sprintf(szLog, "map memory::: num:%d, pointer:%p", *global_ptrHubNum, global_ptrUh);
+//	LogFile::write_sys_log(szLog);
+//#endif
+	//if(num==0 && ((USBHUB*)global_ptrUh)->bInUse)
+	if(num==0 && (global_ptrUh[0]->bInUse))
 		return false;
-	global_hub_info[num].usbNum = num;
-	global_hub_info[num].bInUse = true;
+	//global_hub_info[num].usbNum = num;
+	//global_hub_info[num].bInUse = true;
+	//((USBHUB*)(global_ptrUh + sizeof(USBHUB) * num))->usbNum = num;
+	//((USBHUB*)(global_ptrUh + sizeof(USBHUB) * num))->bInUse = true;
+	global_ptrUh[num]->usbNum = num;
+	global_ptrUh[num]->bInUse = true;
 
 	return true;
 }
@@ -1257,7 +1325,7 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 				send_all_client_packs(buf, nLen);
 
 
-				sprintf(content, "%s_%s", "1", devinfo.m_szImei);
+				sprintf(content, "%s_%s_%d", "1", devinfo.m_szImei, pHub->usbNum);
 				strcpy(pHub->phoneImei, devinfo.m_szImei);
 
 				//pthread_create(&pt_detect, NULL, pthread_func_detect, ptr);
@@ -1329,17 +1397,17 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 		char buf[MAXSIZE] = { 0 };
 		if(pHub->type == 2)
 		{
-//#ifdef DEBUG
-//			sprintf(szLog, "usb hub info is---port:%d,type:%d,phoneOpenUsbDebug:%d",
-//					pHub->usbNum, pHub->type, pHub->phoneOpenUsbDebug);
-//			LogFile::write_sys_log(szLog);
-//#endif
+#ifdef DEBUG
+			sprintf(szLog, "usb hub info is---port:%d,type:%d,phoneOpenUsbDebug:%d",
+					pHub->usbNum, pHub->type, pHub->phoneOpenUsbDebug);
+			LogFile::write_sys_log(szLog);
+#endif
 			if(!pHub->phoneOpenUsbDebug && pHub->usbNum == 0)
 			{
 				pHub->clear();
 				return 0;
 			}
-			InterfaceFull::phone_plug_out();
+			//InterfaceFull::phone_plug_out();
 			int nLen = grap_pack(buf, SOCKET_CODE_PHONEPULLOUT, pHub->phoneImei);
 			send_all_client_packs(buf, nLen);
 		}
@@ -1395,7 +1463,8 @@ void DeviceDetect::send_usb_info()
 	int size = getFsSize(DEV_EXTERNAL_SDCARD_PATH, &total, &free);
 	if(size > 0)
 	{
-		USBHUB* pHub = &global_hub_info[9];
+		//USBHUB* pHub = &global_hub_info[9];
+		USBHUB* pHub = ((USBHUB*)(global_ptrUh + sizeof(USBHUB) * 9));
 		pHub->state = 4;
 		pHub->type = 4;
 		pHub->bInUse = true;

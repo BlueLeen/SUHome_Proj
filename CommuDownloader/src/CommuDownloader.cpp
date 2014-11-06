@@ -106,8 +106,24 @@ typedef struct _SOCKCLIENTBUF
 	int clientFd;
 }SOCKCLIENTBUF;
 
+
+//typedef struct _USBHUBBINDTHREAD
+//{
+//	_USBHUBBINDTHREAD():pHub(NULL),threadPointer(NULL)
+//	{
+//	}
+//	USBHUB* pHub;
+//	void*  threadPointer;
+//}USBHUBBINDTHREAD;
+//USBHUBBINDTHREAD global_hub_thread[10];
+
 SerialLine* global_ptrSl;
 int* global_ptrDevNum;
+
+USBHUB* global_ptrUh[10];
+int* global_ptrHubNum;
+
+//extern USBHUB global_hub_info[10];
 
 extern char* get_current_path();
 extern char* get_current_path(char* szPath, int nLen);
@@ -590,6 +606,45 @@ void KillProcess(char* szProcess)
 	}
 }
 
+void alloc_shmem_uh()
+{
+	int fd = shm_open("myshmuh", O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+	ftruncate(fd, 1024);
+	void *shm = mmap(NULL, 1024, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	//global_ptrShm = mmap(NULL, 1024, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	close(fd);
+	*((int*)shm) = 10;
+	//printf("\nMemory attached at %X\n", *(int*)shm);
+	global_ptrHubNum = (int*)shm;
+	*global_ptrHubNum = 10;
+
+	int sz = sizeof(USBHUB);
+	for(int i=0; i<=10; i++)
+	{
+		global_ptrUh[i] = (USBHUB*)(shm + sizeof(int*)+i*sz);
+	}
+
+#ifdef DEBUG
+	char szLog[MINSIZE] = { 0 };
+	sprintf(szLog, "uh map memory:%p->%d ", global_ptrHubNum, *global_ptrHubNum);
+	LogFile::write_sys_log(szLog);
+#endif
+}
+
+void shmem_rw_uh()
+{
+	struct stat stat;
+	int fd = shm_open("myshmuh", O_RDWR, S_IRUSR | S_IWUSR);
+	fstat(fd, &stat);
+	global_ptrHubNum = (int*) mmap(NULL, stat.st_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	int sz = sizeof(USBHUB);
+	for(int i=0; i<=10; i++)
+	{
+		global_ptrUh[i] = (USBHUB*)(global_ptrHubNum + sizeof(int*)+i*sz);
+	}
+	close(fd);
+}
+
 void alloc_shmem()
 {
 	int fd = shm_open("./myshm", O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
@@ -645,8 +700,9 @@ int main() {
 #ifndef NOTCREATADBKEYFILE
 	create_adbkey_file();
 #endif
-	alloc_shmem();
-	printf("\nMemory attached at %X\n", *global_ptrDevNum);
+	//alloc_shmem();
+	alloc_shmem_uh();
+	//printf("\nMemory attached at %X\n", *global_ptrDevNum);
 	get_phone_vendorid();
 	KillProcess("adb");
 	if(!set_home_env("HOME", "/data"))
@@ -708,9 +764,9 @@ int main() {
 	//			LogFile::write_sys_log(buf, APP_ROOT_PATH);
 	//#endif
 			}
-#ifndef ONECLIENT
-			exit(0);
-#endif
+//#ifndef ONECLIENT
+//			exit(0);
+//#endif
 		}
 
 		//listen_client_fd(sockClt);
@@ -873,17 +929,42 @@ typedef struct _cltBuf
 	char contentBuf[SOCKET_RECVPACK_CONTENT];
 	int clientFd;
 }CltBuf;
+void sig_quit(int)
+{
+#ifdef DEBUG
+	char szLog[MINSIZE] = { 0 };
+	sprintf(szLog, "sig handler's thread id:%d", pthread_self());
+#endif
+	pthread_cancel(pthread_self());
+}
 static void* pthread_func_install_all_apk(void* cbBuf)
 {
+#ifdef DEBUG
+	char szLog[MINSIZE] = { 0 };
+//	sprintf(szLog, "sig handler's thread id ", pthread_self());
+//	LogFile::write_sys_log(szLog);
+#endif
+	shmem_rw_uh();
+	signal(SIGUSR1,sig_quit);
 	CltBuf* cb = (CltBuf*)cbBuf;
 	char coninfo[100][MINSIZE] = {{0}, {0}, {0}};
 	extract_content_info(cb->contentBuf, coninfo, 100);
 	int nCount = atoi(coninfo[0]);
+	int usbNum = atoi(coninfo[nCount+2]);
+	//pthread_join(pthread_self(),  &(global_hub_info[usbNum].hubThreadPointer));
+	//global_hub_info[usbNum].hubThreadId = pthread_self();
+	//((USBHUB*)(global_ptrUh+sizeof(USBHUB)*usbNum))->hubThreadId = pthread_self();
+	global_ptrUh[usbNum]->hubThreadId = pthread_self();
+#ifdef DEBUG
+	//sprintf(szLog, "Hub is number:%d, hub thread pointer is:%d", usbNum, global_hub_info[usbNum].hubThreadId);
+	//sprintf(szLog, "Hub is number:%d, hub thread pointer is:%d", usbNum, ((USBHUB*)(global_ptrUh+sizeof(USBHUB)*usbNum))->hubThreadId);
+	sprintf(szLog, "Hub is number:%d, hub thread pointer is:%d", usbNum, global_ptrUh[usbNum]->hubThreadId);
+	LogFile::write_sys_log(szLog);
+#endif
 	InstallApkInfo iai_info;
 	strcpy(iai_info.phoneSerial, coninfo[nCount+1]);
 	iai_info.clientFd = cb->clientFd;
 #ifdef DEBUG
-	char szLog[MINSIZE] = { 0 };
 	sprintf(szLog, "The content's total fields count is:%d, phone serialno is:%s", nCount+1, coninfo[nCount+1]);
 	LogFile::write_sys_log(szLog);
 #endif
@@ -894,7 +975,8 @@ static void* pthread_func_install_all_apk(void* cbBuf)
 		LogFile::write_sys_log(szLog);
 #endif
 		strcpy(iai_info.apkName, coninfo[i+1]);
-		int result = install_apk(iai_info, i+1);
+		install_apk(iai_info, i+1);
+		//int result = install_apk(iai_info, i+1);
 //		if(result == 2|| result == 1)
 //		{
 //			int k;
@@ -909,6 +991,10 @@ static void* pthread_func_install_all_apk(void* cbBuf)
 //			exit(0);
 //		}
 	}
+	//global_hub_info[usbNum].hubThreadPointer=NULL;
+	//global_hub_info[usbNum].hubThreadId=0;
+	//((USBHUB*)(global_ptrUh+sizeof(USBHUB)*usbNum))->hubThreadId = 0;
+	global_ptrUh[usbNum]->hubThreadId = 0;
 	delete cb;
 	return NULL;
 }
