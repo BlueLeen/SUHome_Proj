@@ -103,12 +103,12 @@ private:
 	static void* pthread_func_plug(void* ptr);
 	static void* pthread_func_call(void* ptr);
 	static void* pthread_func_detect(void* ptr);
-	static int plug_opp_dev(char* usb_message, int nLen);
+	//static int plug_opp_dev(char* usb_message, int nLen);
 	static int plug_opp_dev(char* usb_message);
-	static void plug_opp_dev(string& strMessage, DeviceInfo* pDev);
-	static bool usb_plug_dev(const char* buf, int& num);
+	//static void plug_opp_dev(string& strMessage, DeviceInfo* pDev);
+	//static bool usb_plug_dev(const char* buf, int& num);
 	static bool usb_plug_dev(const char* buf, int& num, int len);
-	static bool usb_pull_dev(const char* buf, int& num);
+	//static bool usb_pull_dev(const char* buf, int& num);
 	static bool usb_pull_dev(const char* buf, int& num, int len);
 	static unsigned long get_file_size(const char *path);
 	static void read_file_pos(char* buf, const char *path, long int pos = 0);

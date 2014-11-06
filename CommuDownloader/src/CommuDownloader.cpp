@@ -117,13 +117,17 @@ typedef struct _SOCKCLIENTBUF
 //}USBHUBBINDTHREAD;
 //USBHUBBINDTHREAD global_hub_thread[10];
 
-SerialLine* global_ptrSl;
-int* global_ptrDevNum;
+//SerialLine* global_ptrSl;
+//int* global_ptrDevNum;
 
+#ifndef ONECLIENT
 USBHUB* global_ptrUh[10];
 int* global_ptrHubNum;
+#endif
 
-//extern USBHUB global_hub_info[10];
+#ifdef ONECLIENT
+extern USBHUB global_hub_info[10];
+#endif
 
 extern char* get_current_path();
 extern char* get_current_path(char* szPath, int nLen);
@@ -606,6 +610,7 @@ void KillProcess(char* szProcess)
 	}
 }
 
+#ifndef ONECLIENT
 void alloc_shmem_uh()
 {
 	int fd = shm_open("myshmuh", O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
@@ -630,7 +635,6 @@ void alloc_shmem_uh()
 	LogFile::write_sys_log(szLog);
 #endif
 }
-
 void shmem_rw_uh()
 {
 	struct stat stat;
@@ -645,49 +649,31 @@ void shmem_rw_uh()
 	close(fd);
 }
 
-void alloc_shmem()
-{
-	int fd = shm_open("./myshm", O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-	ftruncate(fd, 1024);
-	void *shm = mmap(NULL, 1024, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-	//global_ptrShm = mmap(NULL, 1024, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-	close(fd);
-	*((int*)shm) = 3;
-	//printf("\nMemory attached at %X\n", *(int*)shm);
-	global_ptrDevNum = (int*)shm;
-	*global_ptrDevNum = 3;
-	global_ptrSl = (SerialLine*)(shm + sizeof(int*));
+#endif
 
-//	key_t key;
-//	int shmid;//共享内存标识符
-//	void *shm = NULL;//分配的共享内存的原始首地址
-//	key = ftok("vmmshmsu", 1); // 计算标识符
-//	//创建共享内存
-//	if ((shmid = shmget(key, 1024, IPC_CREAT | IPC_EXCL |0666)) < 0)
-//		printf("shmget error");
-//		//exit(1);
-//	//将共享内存连接到当前进程的地址空间
-//	shm = shmat(shmid, 0, 0);
-//	if (shm == (void*) -1) {
-//		fprintf(stderr, "shmat failed\n");
-//		exit(EXIT_FAILURE);
-//	}
-//	memset(shm, 0, 1024);
+//void alloc_shmem()
+//{
+//	int fd = shm_open("./myshm", O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+//	ftruncate(fd, 1024);
+//	void *shm = mmap(NULL, 1024, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+//	//global_ptrShm = mmap(NULL, 1024, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+//	close(fd);
+//	*((int*)shm) = 3;
+//	//printf("\nMemory attached at %X\n", *(int*)shm);
 //	global_ptrDevNum = (int*)shm;
 //	*global_ptrDevNum = 3;
 //	global_ptrSl = (SerialLine*)(shm + sizeof(int*));
-	//printf("\nMemory attached at %X\n", (unsigned long) global_share_ptr);
-}
-
-void shmem_rw()
-{
-	struct stat stat;
-	int fd = shm_open("./myshm", O_RDWR, S_IRUSR | S_IWUSR);
-	fstat(fd, &stat);
-	global_ptrDevNum = (int*) mmap(NULL, stat.st_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-	global_ptrSl = (SerialLine*)(global_ptrDevNum+sizeof(int*));
-	close(fd);
-}
+//}
+//
+//void shmem_rw()
+//{
+//	struct stat stat;
+//	int fd = shm_open("./myshm", O_RDWR, S_IRUSR | S_IWUSR);
+//	fstat(fd, &stat);
+//	global_ptrDevNum = (int*) mmap(NULL, stat.st_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+//	global_ptrSl = (SerialLine*)(global_ptrDevNum+sizeof(int*));
+//	close(fd);
+//}
 
 int main() {
 	//cout << "!!!Hello World!!!" << endl; // prints !!!Hello World!!!
@@ -701,7 +687,9 @@ int main() {
 	create_adbkey_file();
 #endif
 	//alloc_shmem();
+#ifndef ONECLIENT
 	alloc_shmem_uh();
+#endif
 	//printf("\nMemory attached at %X\n", *global_ptrDevNum);
 	get_phone_vendorid();
 	KillProcess("adb");
@@ -759,7 +747,7 @@ int main() {
 				//add_client_fd(sockClt);
 				//global_sock_srv.receive_socket_packs(buf, BUFSIZ, sockClt);
 				pthread_create(&pt_recv, NULL, pthread_func_recv, new int(sockClt));
-				pthread_join(pt_recv,NULL);
+				//pthread_join(pt_recv,NULL); //这个控制程序只能连接一个客户线程
 	//#ifdef DEBUG
 	//			LogFile::write_sys_log(buf, APP_ROOT_PATH);
 	//#endif
@@ -944,21 +932,32 @@ static void* pthread_func_install_all_apk(void* cbBuf)
 //	sprintf(szLog, "sig handler's thread id ", pthread_self());
 //	LogFile::write_sys_log(szLog);
 #endif
+
+#ifndef ONECLIENT
 	shmem_rw_uh();
+#endif
 	signal(SIGUSR1,sig_quit);
 	CltBuf* cb = (CltBuf*)cbBuf;
 	char coninfo[100][MINSIZE] = {{0}, {0}, {0}};
 	extract_content_info(cb->contentBuf, coninfo, 100);
 	int nCount = atoi(coninfo[0]);
 	int usbNum = atoi(coninfo[nCount+2]);
+
 	//pthread_join(pthread_self(),  &(global_hub_info[usbNum].hubThreadPointer));
-	//global_hub_info[usbNum].hubThreadId = pthread_self();
+#ifdef ONECLIENT
+	global_hub_info[usbNum].hubThreadId = pthread_self();
+#else
 	//((USBHUB*)(global_ptrUh+sizeof(USBHUB)*usbNum))->hubThreadId = pthread_self();
 	global_ptrUh[usbNum]->hubThreadId = pthread_self();
+#endif
+
 #ifdef DEBUG
-	//sprintf(szLog, "Hub is number:%d, hub thread pointer is:%d", usbNum, global_hub_info[usbNum].hubThreadId);
+#ifdef ONECLIENT
+	sprintf(szLog, "Hub is number:%d, hub thread pointer is:%d", usbNum, global_hub_info[usbNum].hubThreadId);
 	//sprintf(szLog, "Hub is number:%d, hub thread pointer is:%d", usbNum, ((USBHUB*)(global_ptrUh+sizeof(USBHUB)*usbNum))->hubThreadId);
+#else
 	sprintf(szLog, "Hub is number:%d, hub thread pointer is:%d", usbNum, global_ptrUh[usbNum]->hubThreadId);
+#endif
 	LogFile::write_sys_log(szLog);
 #endif
 	InstallApkInfo iai_info;
@@ -992,9 +991,12 @@ static void* pthread_func_install_all_apk(void* cbBuf)
 //		}
 	}
 	//global_hub_info[usbNum].hubThreadPointer=NULL;
-	//global_hub_info[usbNum].hubThreadId=0;
+#ifdef ONECLIENT
+	global_hub_info[usbNum].hubThreadId=0;
+#else
 	//((USBHUB*)(global_ptrUh+sizeof(USBHUB)*usbNum))->hubThreadId = 0;
 	global_ptrUh[usbNum]->hubThreadId = 0;
+#endif
 	delete cb;
 	return NULL;
 }

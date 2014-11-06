@@ -25,8 +25,8 @@
 #define APK_TEMP_PATH  "/data/local/tmp/strongunion/tmp"
 #define DEVICE_EMULATOR  "emulator"//"8fd35188"  //"emulator"
 
-extern SerialLine* global_ptrSl;
-extern int* global_ptrDevNum;
+//extern SerialLine* global_ptrSl;
+//extern int* global_ptrDevNum;
 //extern void shmem_rw();
 
 char* get_current_path();
@@ -50,63 +50,63 @@ char* InterfaceFull::get_adb_path()
 	return szAdbPath;
 }
 
-void InterfaceFull::detect_device()
-{
-	char szInfo[MAXSIZE] = { 0 };
-	char shellCommDevice[MAXSIZE] = { 0 };
-	sprintf(shellCommDevice, "%s devices", get_adb_path());
-	//execstream(shellCommDevice, szInfo, sizeof(szInfo));
-
-	int iNum=0;
-	char szSer[USBCOUNT][MINROWSIZE];
-	FILE* stream;
-	stream = popen(shellCommDevice, "r");
-	if(NULL == stream)
-	{
-		LogFile::write_sys_log("execute adb command failed!");
-		strcpy(szInfo, "failed");
-	}
-	else
-	{
-		int j=0;
-		while(NULL != fgets(szInfo, sizeof(szInfo), stream))
-		{
-			if(j==0)
-			{
-				j++;
-				continue;
-			}
-			strncpy(szSer[iNum++], szInfo, MINROWSIZE);
-		}
-		pclose(stream);
-	}
-	//m_nCount = 0;
-	*global_ptrDevNum = 0;
-	for(int i=0; i<iNum; i++)
-	{
-		char* szTmp = strstr(szSer[i], "\t");
-		char* szEmulator = strstr(szSer[i], DEVICE_EMULATOR);
-		if(szTmp!=NULL && szEmulator==NULL)
-		{
-			//char szSrl[ROWSIZE] = { 0 };
-			//memset(m_Sl[m_nCount].szSerial, 0, MINROWSIZE);
-			memset((global_ptrSl+(*global_ptrDevNum))->szSerial, 0, MINROWSIZE);
-			int size = szTmp-szSer[i];
-			//strncpy((char*)m_Sl[m_nCount].szSerial, szSer[i], size);
-			strncpy((global_ptrSl+(*global_ptrDevNum))->szSerial, szSer[i], size);
-			//m_Sl[m_nCount].szSerial[size] = '\0';
-			(global_ptrSl+(*global_ptrDevNum))->szSerial[size] = '\0';
-#ifdef DEBUG
-			char szLog[MINSIZE] = { 0 };
-			//snprintf(szLog, sizeof(szLog), "device %d serialno:%s---", m_nCount, m_Sl[m_nCount].szSerial);
-			snprintf(szLog, sizeof(szLog), "device %d serialno:%s---", *global_ptrDevNum, (global_ptrSl+(*global_ptrDevNum))->szSerial);
-			LogFile::write_sys_log(szLog);
-#endif
-			//m_nCount++;
-			(*global_ptrDevNum)++;
-		}
-	}
-}
+//void InterfaceFull::detect_device()
+//{
+//	char szInfo[MAXSIZE] = { 0 };
+//	char shellCommDevice[MAXSIZE] = { 0 };
+//	sprintf(shellCommDevice, "%s devices", get_adb_path());
+//	//execstream(shellCommDevice, szInfo, sizeof(szInfo));
+//
+//	int iNum=0;
+//	char szSer[USBCOUNT][MINROWSIZE];
+//	FILE* stream;
+//	stream = popen(shellCommDevice, "r");
+//	if(NULL == stream)
+//	{
+//		LogFile::write_sys_log("execute adb command failed!");
+//		strcpy(szInfo, "failed");
+//	}
+//	else
+//	{
+//		int j=0;
+//		while(NULL != fgets(szInfo, sizeof(szInfo), stream))
+//		{
+//			if(j==0)
+//			{
+//				j++;
+//				continue;
+//			}
+//			strncpy(szSer[iNum++], szInfo, MINROWSIZE);
+//		}
+//		pclose(stream);
+//	}
+//	//m_nCount = 0;
+//	*global_ptrDevNum = 0;
+//	for(int i=0; i<iNum; i++)
+//	{
+//		char* szTmp = strstr(szSer[i], "\t");
+//		char* szEmulator = strstr(szSer[i], DEVICE_EMULATOR);
+//		if(szTmp!=NULL && szEmulator==NULL)
+//		{
+//			//char szSrl[ROWSIZE] = { 0 };
+//			//memset(m_Sl[m_nCount].szSerial, 0, MINROWSIZE);
+//			memset((global_ptrSl+(*global_ptrDevNum))->szSerial, 0, MINROWSIZE);
+//			int size = szTmp-szSer[i];
+//			//strncpy((char*)m_Sl[m_nCount].szSerial, szSer[i], size);
+//			strncpy((global_ptrSl+(*global_ptrDevNum))->szSerial, szSer[i], size);
+//			//m_Sl[m_nCount].szSerial[size] = '\0';
+//			(global_ptrSl+(*global_ptrDevNum))->szSerial[size] = '\0';
+//#ifdef DEBUG
+//			char szLog[MINSIZE] = { 0 };
+//			//snprintf(szLog, sizeof(szLog), "device %d serialno:%s---", m_nCount, m_Sl[m_nCount].szSerial);
+//			snprintf(szLog, sizeof(szLog), "device %d serialno:%s---", *global_ptrDevNum, (global_ptrSl+(*global_ptrDevNum))->szSerial);
+//			LogFile::write_sys_log(szLog);
+//#endif
+//			//m_nCount++;
+//			(*global_ptrDevNum)++;
+//		}
+//	}
+//}
 
 bool InterfaceFull::open_android_usbdebug(char* szSerialno)
 {
@@ -190,73 +190,39 @@ void InterfaceFull::start_adb()
 	}
 }
 
-bool InterfaceFull::open_android_usbdebug()
-{
-	int nCount = 0;
-	//m_nCount = 0;
-	//shmem_rw();
-	//LogFile::write_sys_log(*global_ptrDevNum);
-	(*global_ptrDevNum) = 0;
-	//LogFile::write_sys_log(*global_ptrDevNum);
-#ifdef DEBUG
-	char szLog[MINSIZE] = { 0 };
-	//snprintf(szLog, sizeof(szLog), "current device count:%d.", m_nCount);
-	snprintf(szLog, sizeof(szLog), "current device count:%d.", *global_ptrDevNum);
-	LogFile::write_sys_log(szLog);
-#endif
-	//while(m_nCount <= 0 && nCount < 5)
-	while(*global_ptrDevNum <= 0 && nCount < 5)
-	{
-		detect_device();
-		sleep(1);
-		nCount++;
-	}
-#ifdef DEBUG
-	//snprintf(szLog, sizeof(szLog), "current device count:%d after detect.", m_nCount);
-	snprintf(szLog, sizeof(szLog), "current device count:%d after detect.", *global_ptrDevNum);
-	LogFile::write_sys_log(szLog);
-#endif
-	//if(m_nCount==1 || m_nCount==0)
-	if(*global_ptrDevNum==1 || *global_ptrDevNum==0)
-		//return open_android_usbdebug(m_Sl[0].szSerial);
-		return open_android_usbdebug(global_ptrSl->szSerial);
-	else
-		return true;
-//    CLock lock;
-//	static bool bExit = false;
-//	static int nCount = 0;
-//	char shellComm[MAXSIZE] = { 0 };
-//	char shellCommDevice[MAXSIZE] = { 0 };
-//	char shellCommState[MAXSIZE] = { 0 };
-//	char szAdbPath[PATH_MAX] = { 0 };
-//	char szInfo[MAXSIZE] = { 0 };
-//	char szFile[MAXSIZE] = { 0 };
-//	sprintf(szAdbPath, "%s%s", get_current_path(), ADB_ADB_NAME);
-//	sprintf(shellComm, "%s kill-server", szAdbPath);
-//	sprintf(shellCommDevice, "%s devices", szAdbPath);
-//	sprintf(shellCommState, "%s get-state", szAdbPath);
-//	sprintf(szFile, "%s/%s", APK_TEMP_PATH, "text");
-//	//sprintf(shellCommDevice, "%s devices > %s", szAdbPath, szFile);
-//    lock.Lock();
-//    for(int i=0; i<5; i++)
-//    {
-//    	bExit = phone_is_online(szInfo, shellCommState);
-//    	if(bExit)
-//    		break;
-//    	sleep(1);
-//    }
-//	while(!bExit && nCount<=6)
+//bool InterfaceFull::open_android_usbdebug()
+//{
+//	int nCount = 0;
+//	//m_nCount = 0;
+//	//shmem_rw();
+//	//LogFile::write_sys_log(*global_ptrDevNum);
+//	(*global_ptrDevNum) = 0;
+//	//LogFile::write_sys_log(*global_ptrDevNum);
+//#ifdef DEBUG
+//	char szLog[MINSIZE] = { 0 };
+//	//snprintf(szLog, sizeof(szLog), "current device count:%d.", m_nCount);
+//	snprintf(szLog, sizeof(szLog), "current device count:%d.", *global_ptrDevNum);
+//	LogFile::write_sys_log(szLog);
+//#endif
+//	//while(m_nCount <= 0 && nCount < 5)
+//	while(*global_ptrDevNum <= 0 && nCount < 5)
 //	{
-//		systemdroid(shellComm);
-//		execstream(shellCommDevice, szInfo, sizeof(szInfo));
-//		//bExit = phone_is_online(szInfo);
-//		bExit = phone_is_online(szInfo, shellCommState);
+//		detect_device();
+//		sleep(1);
 //		nCount++;
-//		usleep(500);
 //	}
-//    lock.Unlock();
-//    return bExit;
-}
+//#ifdef DEBUG
+//	//snprintf(szLog, sizeof(szLog), "current device count:%d after detect.", m_nCount);
+//	snprintf(szLog, sizeof(szLog), "current device count:%d after detect.", *global_ptrDevNum);
+//	LogFile::write_sys_log(szLog);
+//#endif
+//	//if(m_nCount==1 || m_nCount==0)
+//	if(*global_ptrDevNum==1 || *global_ptrDevNum==0)
+//		//return open_android_usbdebug(m_Sl[0].szSerial);
+//		return open_android_usbdebug(global_ptrSl->szSerial);
+//	else
+//		return true;
+//}
 
 bool InterfaceFull::phone_state_off(char* szSerialno)
 {
@@ -267,27 +233,27 @@ bool InterfaceFull::phone_state_off(char* szSerialno)
 	return phone_is_online(szInfo, shellCommState) ? false:true;
 }
 
-void InterfaceFull::phone_plug_out()
-{
-	//m_nCount--;
-	(*global_ptrDevNum)--;
-}
+//void InterfaceFull::phone_plug_out()
+//{
+//	//m_nCount--;
+//	(*global_ptrDevNum)--;
+//}
 
-bool InterfaceFull::phone_state_off()
-{
-//	if(m_nCount == 1)
-//		return phone_state_off(m_Sl[0].szSerial);
-	if(*global_ptrDevNum == 1)
-		return phone_state_off(global_ptrSl->szSerial);
-	else
-		return true;
-//	char shellCommState[MAXSIZE] = { 0 };
-//	char szAdbPath[PATH_MAX] = { 0 };
-//	char szInfo[MAXSIZE] = { 0 };
-//	sprintf(szAdbPath, "%s%s", get_current_path(), ADB_ADB_NAME);
-//	sprintf(shellCommState, "%s get-state", szAdbPath);
-//	return phone_is_online(szInfo, shellCommState) ? false:true;
-}
+//bool InterfaceFull::phone_state_off()
+//{
+////	if(m_nCount == 1)
+////		return phone_state_off(m_Sl[0].szSerial);
+//	if(*global_ptrDevNum == 1)
+//		return phone_state_off(global_ptrSl->szSerial);
+//	else
+//		return true;
+////	char shellCommState[MAXSIZE] = { 0 };
+////	char szAdbPath[PATH_MAX] = { 0 };
+////	char szInfo[MAXSIZE] = { 0 };
+////	sprintf(szAdbPath, "%s%s", get_current_path(), ADB_ADB_NAME);
+////	sprintf(shellCommState, "%s get-state", szAdbPath);
+////	return phone_is_online(szInfo, shellCommState) ? false:true;
+//}
 
 int InterfaceFull::install_android_apk(char* szApk, char* szSerialno)
 {
@@ -314,88 +280,88 @@ int InterfaceFull::install_android_apk(char* szApk, char* szSerialno)
 	return result;
 }
 
-int InterfaceFull::install_android_apk(char* szApk)
-{
-	//shmem_rw();
-#ifdef DEBUG
-	char szLog[MINSIZE] = { 0 };
-	//snprintf(szLog, sizeof(szLog), "before start install apk::phone count:%d,phone serialno:%s.", m_nCount, m_Sl[0].szSerial);
-	snprintf(szLog, sizeof(szLog), "before start install apk::phone count:%d,phone serialno:%s.", *global_ptrDevNum, global_ptrSl->szSerial);
-	LogFile::write_sys_log(szLog);
-#endif
-	int result = 0;
-//	if(m_nCount == 1 )
-//		return install_android_apk(szApk, m_Sl[0].szSerial);
-//	else
-//		for(int i=0; i<m_nCount; i++)
-//		{
-//			result = install_android_apk(szApk, m_Sl[i].szSerial);
-//		}
-	if(*global_ptrDevNum == 1 )
-		return install_android_apk(szApk, global_ptrSl->szSerial);
-	else
-		for(int i=0; i<*global_ptrDevNum; i++)
-		{
-			result = install_android_apk(szApk, (global_ptrSl+(*global_ptrDevNum))->szSerial);
-		}
-
-	return result;
-//	char shellComm[MAXSIZE] = { 0 };
-//	//char szPath[MAXSIZE] = { 0 };
-//	char szApkPath[MAXSIZE] = { 0 };
-//	//sprintf(szPath, "%s", APP_ROOT_PATH);
-//	//sprintf(szApkPath, "%s%s/%s", szPath, APK_DIR_NAME, szApk);
-//	char szAdbPath[PATH_MAX] = { 0 };
-//	sprintf(szAdbPath, "%s%s", get_current_path(), ADB_ADB_NAME);
-//	strcpy(szApkPath, szApk);
-////	sprintf(shellComm, "%s kill-server", ADB_ADB_NAME);
-////
-////	char shellCommDevice[MAXSIZE] = { 0 };
-////	char szFile[MAXSIZE] = { 0 };
-////	char szInfo[MAXSIZE] = { 0 };
-////	sprintf(szFile, "%s%s", APP_ROOT_PATH, "text");
-////	sprintf(shellCommDevice, "%s devices > %s", ADB_ADB_NAME, szFile);
-////	LogFile::write_sys_log(shellComm, APP_ROOT_PATH);
-////	execstream("adb wait-for-device", szInfo, sizeof(szInfo));
-////	int num1 = execstream(shellComm, szInfo, sizeof(szInfo));
-////	LogFile::write_sys_log(szInfo, APP_ROOT_PATH);
-////	while(systemdroid(shellComm)==0)
-////	{
-////		FILE *fpin;
-////		char line[ROWSIZE] = { 0 };
-////		char line_last[ROWSIZE] = { 0 };
-////		int num2 = execstream(shellCommDevice, szInfo, sizeof(szInfo));
-////		LogFile::write_sys_log(szInfo, APP_ROOT_PATH);
-////		LogFile::write_sys_log(shellCommDevice, APP_ROOT_PATH);
+//int InterfaceFull::install_android_apk(char* szApk)
+//{
+//	//shmem_rw();
+//#ifdef DEBUG
+//	char szLog[MINSIZE] = { 0 };
+//	//snprintf(szLog, sizeof(szLog), "before start install apk::phone count:%d,phone serialno:%s.", m_nCount, m_Sl[0].szSerial);
+//	snprintf(szLog, sizeof(szLog), "before start install apk::phone count:%d,phone serialno:%s.", *global_ptrDevNum, global_ptrSl->szSerial);
+//	LogFile::write_sys_log(szLog);
+//#endif
+//	int result = 0;
+////	if(m_nCount == 1 )
+////		return install_android_apk(szApk, m_Sl[0].szSerial);
+////	else
+////		for(int i=0; i<m_nCount; i++)
 ////		{
-////			fpin = fopen(szFile, "r");
-////			while(fgets(line, ROWSIZE, fpin) != NULL)
-////			{
-////				LogFile::write_sys_log(line, APP_ROOT_PATH);
-////				if(!strcmp(line, "\n")) continue;
-////				strcpy(line_last, line);
-////			}
-////			if(strcmp(line_last, "") && phone_is_online(line_last))
-////			{
-////				fclose(fpin);
-////				break;
-////			}
-////			fclose(fpin);
+////			result = install_android_apk(szApk, m_Sl[i].szSerial);
 ////		}
-////	}
-//	char szInfo[MAXSIZE] = { 0 };
-//	//sprintf(shellComm, "%s install -r %s", ADB_ADB_NAME, szApkPath);
-//	sprintf(shellComm, "%s install -r %s", szAdbPath, szApkPath);
-//#ifdef DEBUG
-//	LogFile::write_sys_log(shellComm);
-//#endif
-//	int result = execstream(shellComm, szInfo, sizeof(szInfo));
-//#ifdef DEBUG
-//	LogFile::write_sys_log(szInfo);
-//#endif
-//	//systemdroid("exit");
+//	if(*global_ptrDevNum == 1 )
+//		return install_android_apk(szApk, global_ptrSl->szSerial);
+//	else
+//		for(int i=0; i<*global_ptrDevNum; i++)
+//		{
+//			result = install_android_apk(szApk, (global_ptrSl+(*global_ptrDevNum))->szSerial);
+//		}
+//
 //	return result;
-}
+////	char shellComm[MAXSIZE] = { 0 };
+////	//char szPath[MAXSIZE] = { 0 };
+////	char szApkPath[MAXSIZE] = { 0 };
+////	//sprintf(szPath, "%s", APP_ROOT_PATH);
+////	//sprintf(szApkPath, "%s%s/%s", szPath, APK_DIR_NAME, szApk);
+////	char szAdbPath[PATH_MAX] = { 0 };
+////	sprintf(szAdbPath, "%s%s", get_current_path(), ADB_ADB_NAME);
+////	strcpy(szApkPath, szApk);
+//////	sprintf(shellComm, "%s kill-server", ADB_ADB_NAME);
+//////
+//////	char shellCommDevice[MAXSIZE] = { 0 };
+//////	char szFile[MAXSIZE] = { 0 };
+//////	char szInfo[MAXSIZE] = { 0 };
+//////	sprintf(szFile, "%s%s", APP_ROOT_PATH, "text");
+//////	sprintf(shellCommDevice, "%s devices > %s", ADB_ADB_NAME, szFile);
+//////	LogFile::write_sys_log(shellComm, APP_ROOT_PATH);
+//////	execstream("adb wait-for-device", szInfo, sizeof(szInfo));
+//////	int num1 = execstream(shellComm, szInfo, sizeof(szInfo));
+//////	LogFile::write_sys_log(szInfo, APP_ROOT_PATH);
+//////	while(systemdroid(shellComm)==0)
+//////	{
+//////		FILE *fpin;
+//////		char line[ROWSIZE] = { 0 };
+//////		char line_last[ROWSIZE] = { 0 };
+//////		int num2 = execstream(shellCommDevice, szInfo, sizeof(szInfo));
+//////		LogFile::write_sys_log(szInfo, APP_ROOT_PATH);
+//////		LogFile::write_sys_log(shellCommDevice, APP_ROOT_PATH);
+//////		{
+//////			fpin = fopen(szFile, "r");
+//////			while(fgets(line, ROWSIZE, fpin) != NULL)
+//////			{
+//////				LogFile::write_sys_log(line, APP_ROOT_PATH);
+//////				if(!strcmp(line, "\n")) continue;
+//////				strcpy(line_last, line);
+//////			}
+//////			if(strcmp(line_last, "") && phone_is_online(line_last))
+//////			{
+//////				fclose(fpin);
+//////				break;
+//////			}
+//////			fclose(fpin);
+//////		}
+//////	}
+////	char szInfo[MAXSIZE] = { 0 };
+////	//sprintf(shellComm, "%s install -r %s", ADB_ADB_NAME, szApkPath);
+////	sprintf(shellComm, "%s install -r %s", szAdbPath, szApkPath);
+////#ifdef DEBUG
+////	LogFile::write_sys_log(shellComm);
+////#endif
+////	int result = execstream(shellComm, szInfo, sizeof(szInfo));
+////#ifdef DEBUG
+////	LogFile::write_sys_log(szInfo);
+////#endif
+////	//systemdroid("exit");
+////	return result;
+//}
 
 bool InterfaceFull::phone_is_online(char* buf, char* cmd)
 {

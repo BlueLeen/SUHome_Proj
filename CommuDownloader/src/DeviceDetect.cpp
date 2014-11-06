@@ -50,7 +50,9 @@ extern int grap_pack(void* buf, int nCode, const char* content);
 extern int execstream(const char *cmdstring, char *buf, int size);
 extern void trim(char* str, char trimstr=' ');
 extern int replacestr(char *sSrc, const char *sMatchStr, const char *sReplaceStr);
+#ifndef ONECLIENT
 extern void shmem_rw_uh();
+#endif
 typedef struct _PHONEVID
 {
 	_PHONEVID():count(0)
@@ -62,10 +64,14 @@ typedef struct _PHONEVID
 }PHONEVID;
 extern PHONEVID global_phone_vidArr;
 
+#ifndef ONECLIENT
 extern int* global_ptrHubNum;
 extern USBHUB* global_ptrUh[10];
+#endif
 
-//USBHUB global_hub_info[10];
+#ifdef ONECLIENT
+USBHUB global_hub_info[10];
+#endif
 
 //extern bool is_file_exist(const char *path);
 
@@ -398,9 +404,15 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 #ifdef DEBUG
 	LogFile::write_sys_log("start map share memory.");
 #endif
+
+#ifndef ONECLIENT
 	shmem_rw_uh();
+#endif
+
 #ifdef DEBUG
+#ifndef ONECLIENT
 	sprintf(szLog, "get the map memory::: num:%p->%d, pointer:%p",global_ptrHubNum, *global_ptrHubNum, global_ptrUh);
+#endif
 	LogFile::write_sys_log(szLog);
 	LogFile::write_sys_log("end map share memory.");
 #endif
@@ -436,9 +448,13 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 					sprintf(szLog, "add device,usb number is:%d", usbNum);
 					LogFile::write_sys_log(szLog);
 #endif
-					//USBHUB* pHub = &global_hub_info[usbNum];
+
+#ifdef ONECLIENT
+					USBHUB* pHub = &global_hub_info[usbNum];
+#else
 					//USBHUB* pHub = global_ptrUh + usbNum*sizeof(USBHUB);
 					USBHUB* pHub = global_ptrUh[usbNum];
+#endif
 					pHub->state = nState;
 					char* szText = strstr(buf, "@");
 					if(szText != NULL)
@@ -460,9 +476,13 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 					sprintf(szLog, "remove device,usb number is:%d", usbNum);
 					LogFile::write_sys_log(szLog);
 #endif
-					//USBHUB* pHub = &global_hub_info[usbNum];
+
+#ifdef ONECLIENT
+					USBHUB* pHub = &global_hub_info[usbNum];
 					//USBHUB* pHub = global_ptrUh + usbNum*sizeof(USBHUB);
+#else
 					USBHUB* pHub = global_ptrUh[usbNum];
+#endif
 					pHub->state = nState;
 					pthread_create(&pt_recv, NULL, pthread_func_call, (void*)pHub);
 #ifdef DEBUG
@@ -476,9 +496,12 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 				unsigned long curTime = GetTickCount();
 				if(curTime - m_lastSdAddTime > 3000)
 				{
-					//USBHUB* pHub = &global_hub_info[9];
+#ifdef ONECLIENT
+					USBHUB* pHub = &global_hub_info[9];
+#else
 					//USBHUB* pHub = global_ptrUh + 9*sizeof(USBHUB);
 					USBHUB* pHub = global_ptrUh[9];
+#endif
 					pHub->state = nState;
 					pHub->type = 4;
 					pHub->bInUse = true;
@@ -501,9 +524,12 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 				unsigned long curTime = GetTickCount();
 				if(curTime - m_lastSdRemoveTime > 3000)
 				{
-					//USBHUB* pHub = &global_hub_info[9];
+#ifdef ONECLIENT
+					USBHUB* pHub = &global_hub_info[9];
 					//USBHUB* pHub = global_ptrUh + 9*sizeof(USBHUB);
+#else
 					USBHUB* pHub = global_ptrUh[9];
+#endif
 					pHub->state = nState;
 					pHub->type = 4;
 					pHub->bInUse = false;
@@ -622,34 +648,34 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 	return 0;
 }
 
-int DeviceDetect::plug_opp_dev(char* usb_message, int nLen)
-{
-	char messFlag[10] = { 0 };
-	int i = 0;
-	while(*usb_message && i<nLen)
-	{
-		if(*usb_message == '@')
-		{
-			break;
-		}
-		messFlag[i++] = *usb_message;
-		++usb_message;
-	}
-	messFlag[i] = '\0';
-	if(!strcmp(messFlag, "add"))
-	{
-		return 1;//if plug the device,return 1
-	}
-	else if(!strcmp(messFlag, "change"))
-	{
-		return 2;
-	}
-	else if(!strcmp(messFlag, "remove"))
-	{
-		return 3;//if remove the device,return 1
-	}
-	return 0;
-}
+//int DeviceDetect::plug_opp_dev(char* usb_message, int nLen)
+//{
+//	char messFlag[10] = { 0 };
+//	int i = 0;
+//	while(*usb_message && i<nLen)
+//	{
+//		if(*usb_message == '@')
+//		{
+//			break;
+//		}
+//		messFlag[i++] = *usb_message;
+//		++usb_message;
+//	}
+//	messFlag[i] = '\0';
+//	if(!strcmp(messFlag, "add"))
+//	{
+//		return 1;//if plug the device,return 1
+//	}
+//	else if(!strcmp(messFlag, "change"))
+//	{
+//		return 2;
+//	}
+//	else if(!strcmp(messFlag, "remove"))
+//	{
+//		return 3;//if remove the device,return 1
+//	}
+//	return 0;
+//}
 
 int DeviceDetect::plug_opp_dev(char* usb_message)
 {
@@ -666,234 +692,296 @@ int DeviceDetect::plug_opp_dev(char* usb_message)
 		return 0;
 }
 
-void DeviceDetect::plug_opp_dev(string& strMessage, DeviceInfo* pDev)
-{
-	string::size_type pos = strMessage.find('@');
-	string szCode = strMessage.substr(0, pos);
-	if(!szCode.compare("add"))
-	{
-		pDev->m_nCode = 1;
-	}
-	else if(!szCode.compare("change"))
-	{
-		pDev->m_nCode = 2;
-	}
-	else if(!szCode.compare("remove"))
-	{
-		pDev->m_nCode = 3;
-	}
-	//pos = strMessage.find("usb");
-}
+//void DeviceDetect::plug_opp_dev(string& strMessage, DeviceInfo* pDev)
+//{
+//	string::size_type pos = strMessage.find('@');
+//	string szCode = strMessage.substr(0, pos);
+//	if(!szCode.compare("add"))
+//	{
+//		pDev->m_nCode = 1;
+//	}
+//	else if(!szCode.compare("change"))
+//	{
+//		pDev->m_nCode = 2;
+//	}
+//	else if(!szCode.compare("remove"))
+//	{
+//		pDev->m_nCode = 3;
+//	}
+//	//pos = strMessage.find("usb");
+//}
 
-bool DeviceDetect::usb_plug_dev(const char* buf, int& num)
-{
-#ifdef DEBUG
-	char szLog[ROWSIZE] = { 0 };
-#endif
-	sleep(3);
-	long long total = 0;
-	long long free = 0;
-	if(!strcmp(buf, USB_HUB0_ADD))
-	{
-		//if(global_hub_info[0].bInUse)
-		if(((USBHUB*)global_ptrUh)->bInUse)
-			return false;
-		//global_hub_info[0].usbNum = 0;
-		//global_hub_info[0].bInUse = true;
-		((USBHUB*)global_ptrUh)->usbNum = 0;
-		((USBHUB*)global_ptrUh)->bInUse = true;
-		int size = 0;
-		size = getFsSize(DEV_USB_PATH, &total, &free);
-		if(size > 0)
-		{
-			//global_hub_info[0].type = 1;
-			((USBHUB*)global_ptrUh)->type = 1;
-#ifdef DEBUG
-			sprintf(szLog, "The usb storage size is:%d MB!", size);
-			LogFile::write_sys_log(szLog);
-#endif
-		}
-		num = 0;
-		return true;
-	}
-	else if(!strcmp(buf, USB_HUB1_ADD))
-	{
-//		if(global_hub_info[1].bInUse)
+//bool DeviceDetect::usb_plug_dev(const char* buf, int& num)
+//{
+//#ifdef DEBUG
+//	char szLog[ROWSIZE] = { 0 };
+//#endif
+//	sleep(3);
+//	long long total = 0;
+//	long long free = 0;
+//	if(!strcmp(buf, USB_HUB0_ADD))
+//	{
+//#ifdef ONECLIENT
+//		if(global_hub_info[0].bInUse)
+//#else
+//		if(((USBHUB*)global_ptrUh)->bInUse)
+//#endif
 //			return false;
-		//global_hub_info[1].usbNum = 1;
-		//global_hub_info[1].bInUse = true;
-		((USBHUB*)(global_ptrUh+sizeof(USBHUB)))->usbNum = 1;
-		((USBHUB*)(global_ptrUh+sizeof(USBHUB)))->bInUse = true;
-		int size = 0;
-		size = getFsSize(DEV_USB_PATH, &total, &free);
-		if(size > 0)
-		{
-			//global_hub_info[1].type = 1;
-			((USBHUB*)(global_ptrUh+sizeof(USBHUB)))->type = 1;
-#ifdef DEBUG
-			sprintf(szLog, "The usb storage size is:%d MB!", size);
-			LogFile::write_sys_log(szLog);
-#endif
-		}
-		num = 1;
-		return true;
-	}
-	else if(!strcmp(buf, USB_HUB2_ADD))
-	{
-//		if(global_hub_info[2].bInUse)
-//			return false;
-		//global_hub_info[2].usbNum = 2;
-		//global_hub_info[2].bInUse = true;
-		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*2))->usbNum = 2;
-		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*2))->bInUse = true;
-		int size = 0;
-		size = getFsSize(DEV_USB_PATH, &total, &free);
-		if(size > 0)
-		{
-			//global_hub_info[2].type = 1;
-			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*2))->type = 1;
-#ifdef DEBUG
-			sprintf(szLog, "The usb storage size is:%d MB!", size);
-			LogFile::write_sys_log(szLog);
-#endif
-		}
-		num = 2;
-		return true;
-	}
-	else if(!strcmp(buf, USB_HUB3_ADD))
-	{
-//		if(global_hub_info[3].bInUse)
-//			return false;
-		//global_hub_info[3].usbNum = 3;
-		//global_hub_info[3].bInUse = true;
-		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*3))->usbNum = 3;
-		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*3))->bInUse = true;
-		int size = 0;
-		size = getFsSize(DEV_USB_PATH, &total, &free);
-		if(size > 0)
-		{
-			//global_hub_info[3].type = 1;
-			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*3))->type = 1;
-#ifdef DEBUG
-			sprintf(szLog, "The usb storage size is:%d MB!", size);
-			LogFile::write_sys_log(szLog);
-#endif
-		}
-		num = 3;
-		return true;
-	}
-	else if(!strcmp(buf, USB_HUB4_ADD))
-	{
-//		if(global_hub_info[4].bInUse)
-//			return false;
-		//global_hub_info[4].usbNum = 4;
-		//global_hub_info[4].bInUse = true;
-		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*4))->usbNum = 4;
-		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*4))->bInUse = true;
-		int size = 0;
-		size = getFsSize(DEV_USB_PATH, &total, &free);
-		if(size > 0)
-		{
-			//global_hub_info[4].type = 1;
-			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*4))->type = 1;
-#ifdef DEBUG
-			sprintf(szLog, "The usb storage size is:%d MB!", size);
-			LogFile::write_sys_log(szLog);
-#endif
-		}
-		num = 4;
-		return true;
-	}
-	else if(!strcmp(buf, USB_HUB5_ADD))
-	{
-//		if(global_hub_info[5].bInUse)
-//			return false;
-		//global_hub_info[5].usbNum = 5;
-		//global_hub_info[5].bInUse = true;
-		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*5))->usbNum = 5;
-		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*5))->bInUse = true;
-		int size = 0;
-		size = getFsSize(DEV_USB_PATH, &total, &free);
-		if(size > 0)
-		{
-			//global_hub_info[5].type = 1;
-			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*5))->type = 1;
-#ifdef DEBUG
-			sprintf(szLog, "The usb storage size is:%d MB!", size);
-			LogFile::write_sys_log(szLog);
-#endif
-		}
-		num = 5;
-		return true;
-	}
-	else if(!strcmp(buf, USB_HUB6_ADD))
-	{
-//		if(global_hub_info[6].bInUse)
-//			return false;
-		//global_hub_info[6].usbNum = 6;
-		//global_hub_info[6].bInUse = true;
-		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*6))->usbNum = 6;
-		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*6))->bInUse = true;
-		int size = 0;
-		size = getFsSize(DEV_USB_PATH, &total, &free);
-		if(size > 0)
-		{
-			//global_hub_info[6].type = 1;
-			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*6))->type = 1;
-#ifdef DEBUG
-			sprintf(szLog, "The usb storage size is:%d MB!", size);
-			LogFile::write_sys_log(szLog);
-#endif
-		}
-		num = 6;
-		return true;
-	}
-	else if(!strcmp(buf, USB_HUB7_ADD))
-	{
-//		if(global_hub_info[7].bInUse)
-//			return false;
-		//global_hub_info[7].usbNum = 7;
-		//global_hub_info[7].bInUse = true;
-		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*7))->usbNum = 7;
-		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*7))->bInUse = true;
-		int size = 0;
-		size = getFsSize(DEV_USB_PATH, &total, &free);
-		if(size > 0)
-		{
-			//global_hub_info[7].type = 1;
-			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*7))->type = 1;
-#ifdef DEBUG
-			sprintf(szLog, "The usb storage size is:%d MB!", size);
-			LogFile::write_sys_log(szLog);
-#endif
-		}
-		num = 7;
-		return true;
-	}
-	else if(!strcmp(buf, USB_HUB8_ADD))
-	{
-//		if(global_hub_info[8].bInUse)
-//			return false;
-		//global_hub_info[8].usbNum = 8;
-		//global_hub_info[8].bInUse = true;
-		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*8))->usbNum = 8;
-		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*8))->bInUse = true;
-		int size = 0;
-		size = getFsSize(DEV_USB_PATH, &total, &free);
-		if(size > 0)
-		{
-			//global_hub_info[8].type = 1;
-			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*8))->type = 1;
-#ifdef DEBUG
-			sprintf(szLog, "The usb storage size is:%d MB!", size);
-			LogFile::write_sys_log(szLog);
-#endif
-		}
-		num = 8;
-		return true;
-	}
-	return false;
-}
+//#ifdef ONECLIENT
+//		global_hub_info[0].usbNum = 0;
+//		global_hub_info[0].bInUse = true;
+//#else
+//		((USBHUB*)global_ptrUh)->usbNum = 0;
+//		((USBHUB*)global_ptrUh)->bInUse = true;
+//#endif
+//		int size = 0;
+//		size = getFsSize(DEV_USB_PATH, &total, &free);
+//		if(size > 0)
+//		{
+//#ifdef ONECLIENT
+//			global_hub_info[0].type = 1;
+//#else
+//			((USBHUB*)global_ptrUh)->type = 1;
+//#endif
+//#ifdef DEBUG
+//			sprintf(szLog, "The usb storage size is:%d MB!", size);
+//			LogFile::write_sys_log(szLog);
+//#endif
+//		}
+//		num = 0;
+//		return true;
+//	}
+//	else if(!strcmp(buf, USB_HUB1_ADD))
+//	{
+////		if(global_hub_info[1].bInUse)
+////			return false;
+//#ifdef ONECLIENT
+//		global_hub_info[1].usbNum = 1;
+//		global_hub_info[1].bInUse = true;
+//#else
+//		((USBHUB*)(global_ptrUh+sizeof(USBHUB)))->usbNum = 1;
+//		((USBHUB*)(global_ptrUh+sizeof(USBHUB)))->bInUse = true;
+//#endif
+//		int size = 0;
+//		size = getFsSize(DEV_USB_PATH, &total, &free);
+//		if(size > 0)
+//		{
+//#ifdef ONECLIENT
+//			global_hub_info[1].type = 1;
+//#else
+//			((USBHUB*)(global_ptrUh+sizeof(USBHUB)))->type = 1;
+//#endif
+//#ifdef DEBUG
+//			sprintf(szLog, "The usb storage size is:%d MB!", size);
+//			LogFile::write_sys_log(szLog);
+//#endif
+//		}
+//		num = 1;
+//		return true;
+//	}
+//	else if(!strcmp(buf, USB_HUB2_ADD))
+//	{
+////		if(global_hub_info[2].bInUse)
+////			return false;
+//#ifdef ONECLIENT
+//		global_hub_info[2].usbNum = 2;
+//		global_hub_info[2].bInUse = true;
+//#else
+//		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*2))->usbNum = 2;
+//		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*2))->bInUse = true;
+//#endif
+//		int size = 0;
+//		size = getFsSize(DEV_USB_PATH, &total, &free);
+//		if(size > 0)
+//		{
+//#ifdef ONECLIENT
+//			global_hub_info[2].type = 1;
+//#else
+//			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*2))->type = 1;
+//#endif
+//
+//#ifdef DEBUG
+//			sprintf(szLog, "The usb storage size is:%d MB!", size);
+//			LogFile::write_sys_log(szLog);
+//#endif
+//		}
+//		num = 2;
+//		return true;
+//	}
+//	else if(!strcmp(buf, USB_HUB3_ADD))
+//	{
+////		if(global_hub_info[3].bInUse)
+////			return false;
+//#ifdef ONECLIENT
+//		global_hub_info[3].usbNum = 3;
+//		global_hub_info[3].bInUse = true;
+//#else
+//		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*3))->usbNum = 3;
+//		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*3))->bInUse = true;
+//#endif
+//		int size = 0;
+//		size = getFsSize(DEV_USB_PATH, &total, &free);
+//		if(size > 0)
+//		{
+//#ifdef ONECLIENT
+//			global_hub_info[3].type = 1;
+//#else
+//			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*3))->type = 1;
+//#endif
+//
+//#ifdef DEBUG
+//			sprintf(szLog, "The usb storage size is:%d MB!", size);
+//			LogFile::write_sys_log(szLog);
+//#endif
+//		}
+//		num = 3;
+//		return true;
+//	}
+//	else if(!strcmp(buf, USB_HUB4_ADD))
+//	{
+////		if(global_hub_info[4].bInUse)
+////			return false;
+//#ifdef ONECLIENT
+//		global_hub_info[4].usbNum = 4;
+//		global_hub_info[4].bInUse = true;
+//#else
+//		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*4))->usbNum = 4;
+//		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*4))->bInUse = true;
+//#endif
+//		int size = 0;
+//		size = getFsSize(DEV_USB_PATH, &total, &free);
+//		if(size > 0)
+//		{
+//#ifdef ONECLIENT
+//			global_hub_info[4].type = 1;
+//#else
+//			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*4))->type = 1;
+//#endif
+//
+//#ifdef DEBUG
+//			sprintf(szLog, "The usb storage size is:%d MB!", size);
+//			LogFile::write_sys_log(szLog);
+//#endif
+//		}
+//		num = 4;
+//		return true;
+//	}
+//	else if(!strcmp(buf, USB_HUB5_ADD))
+//	{
+////		if(global_hub_info[5].bInUse)
+////			return false;
+//#ifdef ONECLIENT
+//		global_hub_info[5].usbNum = 5;
+//		global_hub_info[5].bInUse = true;
+//#else
+//		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*5))->usbNum = 5;
+//		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*5))->bInUse = true;
+//#endif
+//		int size = 0;
+//		size = getFsSize(DEV_USB_PATH, &total, &free);
+//		if(size > 0)
+//		{
+//#ifdef ONECLIENT
+//			global_hub_info[5].type = 1;
+//#else
+//			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*5))->type = 1;
+//#endif
+//
+//#ifdef DEBUG
+//			sprintf(szLog, "The usb storage size is:%d MB!", size);
+//			LogFile::write_sys_log(szLog);
+//#endif
+//		}
+//		num = 5;
+//		return true;
+//	}
+//	else if(!strcmp(buf, USB_HUB6_ADD))
+//	{
+////		if(global_hub_info[6].bInUse)
+////			return false;
+//#ifdef ONECLIENT
+//		global_hub_info[6].usbNum = 6;
+//		global_hub_info[6].bInUse = true;
+//#else
+//		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*6))->usbNum = 6;
+//		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*6))->bInUse = true;
+//#endif
+//		int size = 0;
+//		size = getFsSize(DEV_USB_PATH, &total, &free);
+//		if(size > 0)
+//		{
+//#ifdef ONECLIENT
+//			global_hub_info[6].type = 1;
+//#else
+//			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*6))->type = 1;
+//#endif
+//
+//#ifdef DEBUG
+//			sprintf(szLog, "The usb storage size is:%d MB!", size);
+//			LogFile::write_sys_log(szLog);
+//#endif
+//		}
+//		num = 6;
+//		return true;
+//	}
+//	else if(!strcmp(buf, USB_HUB7_ADD))
+//	{
+////		if(global_hub_info[7].bInUse)
+////			return false;
+//#ifdef ONECLIENT
+//		global_hub_info[7].usbNum = 7;
+//		global_hub_info[7].bInUse = true;
+//#else
+//		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*7))->usbNum = 7;
+//		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*7))->bInUse = true;
+//#endif
+//		int size = 0;
+//		size = getFsSize(DEV_USB_PATH, &total, &free);
+//		if(size > 0)
+//		{
+//#ifdef ONECLIENT
+//			global_hub_info[7].type = 1;
+//#else
+//			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*7))->type = 1;
+//#endif
+//#ifdef DEBUG
+//			sprintf(szLog, "The usb storage size is:%d MB!", size);
+//			LogFile::write_sys_log(szLog);
+//#endif
+//		}
+//		num = 7;
+//		return true;
+//	}
+//	else if(!strcmp(buf, USB_HUB8_ADD))
+//	{
+////		if(global_hub_info[8].bInUse)
+////			return false;
+//#ifdef ONECLIENT
+//		global_hub_info[8].usbNum = 8;
+//		global_hub_info[8].bInUse = true;
+//#else
+//		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*8))->usbNum = 8;
+//		((USBHUB*)(global_ptrUh+sizeof(USBHUB)*8))->bInUse = true;
+//#endif
+//		int size = 0;
+//		size = getFsSize(DEV_USB_PATH, &total, &free);
+//		if(size > 0)
+//		{
+//#ifdef ONECLIENT
+//			global_hub_info[8].type = 1;
+//#else
+//			((USBHUB*)(global_ptrUh+sizeof(USBHUB)*8))->type = 1;
+//#endif
+//#ifdef DEBUG
+//			sprintf(szLog, "The usb storage size is:%d MB!", size);
+//			LogFile::write_sys_log(szLog);
+//#endif
+//		}
+//		num = 8;
+//		return true;
+//	}
+//	return false;
+//}
 
 bool DeviceDetect::usb_plug_dev(const char* buf, int& num, int len)
 {
@@ -913,7 +1001,9 @@ bool DeviceDetect::usb_plug_dev(const char* buf, int& num, int len)
 	{
 		return false;
 	}
-	//if(num==0 && global_hub_info[0].bInUse)
+#ifdef ONECLIENT
+	if(num==0 && global_hub_info[0].bInUse)
+#else
 //#ifdef DEBUG
 //	LogFile::write_sys_log("tttttttttttttttttt");
 //	sprintf(szLog, "map memory::: num:%d, pointer:%p", *global_ptrHubNum, global_ptrUh);
@@ -921,66 +1011,70 @@ bool DeviceDetect::usb_plug_dev(const char* buf, int& num, int len)
 //#endif
 	//if(num==0 && ((USBHUB*)global_ptrUh)->bInUse)
 	if(num==0 && (global_ptrUh[0]->bInUse))
+#endif
 		return false;
-	//global_hub_info[num].usbNum = num;
-	//global_hub_info[num].bInUse = true;
+#ifdef ONECLIENT
+	global_hub_info[num].usbNum = num;
+	global_hub_info[num].bInUse = true;
+#else
 	//((USBHUB*)(global_ptrUh + sizeof(USBHUB) * num))->usbNum = num;
 	//((USBHUB*)(global_ptrUh + sizeof(USBHUB) * num))->bInUse = true;
 	global_ptrUh[num]->usbNum = num;
 	global_ptrUh[num]->bInUse = true;
+#endif
 
 	return true;
 }
 
-bool DeviceDetect::usb_pull_dev(const char* buf, int& num)
-{
-	if(!strcmp(buf, USB_HUB0_REMOVE))
-	{
-		num = 0;
-		return true;
-	}
-	else if(!strcmp(buf, USB_HUB1_REMOVE))
-	{
-		num = 1;
-		return true;
-	}
-	else if(!strcmp(buf, USB_HUB2_REMOVE))
-	{
-		num = 2;
-		return true;
-	}
-	else if(!strcmp(buf, USB_HUB3_REMOVE))
-	{
-		num = 3;
-		return true;
-	}
-	else if(!strcmp(buf, USB_HUB4_REMOVE))
-	{
-		num = 4;
-		return true;
-	}
-	else if(!strcmp(buf, USB_HUB5_REMOVE))
-	{
-		num = 5;
-		return true;
-	}
-	else if(!strcmp(buf, USB_HUB6_REMOVE))
-	{
-		num = 6;
-		return true;
-	}
-	else if(!strcmp(buf, USB_HUB7_REMOVE))
-	{
-		num = 7;
-		return true;
-	}
-	else if(!strcmp(buf, USB_HUB8_REMOVE))
-	{
-		num = 8;
-		return true;
-	}
-	return false;
-}
+//bool DeviceDetect::usb_pull_dev(const char* buf, int& num)
+//{
+//	if(!strcmp(buf, USB_HUB0_REMOVE))
+//	{
+//		num = 0;
+//		return true;
+//	}
+//	else if(!strcmp(buf, USB_HUB1_REMOVE))
+//	{
+//		num = 1;
+//		return true;
+//	}
+//	else if(!strcmp(buf, USB_HUB2_REMOVE))
+//	{
+//		num = 2;
+//		return true;
+//	}
+//	else if(!strcmp(buf, USB_HUB3_REMOVE))
+//	{
+//		num = 3;
+//		return true;
+//	}
+//	else if(!strcmp(buf, USB_HUB4_REMOVE))
+//	{
+//		num = 4;
+//		return true;
+//	}
+//	else if(!strcmp(buf, USB_HUB5_REMOVE))
+//	{
+//		num = 5;
+//		return true;
+//	}
+//	else if(!strcmp(buf, USB_HUB6_REMOVE))
+//	{
+//		num = 6;
+//		return true;
+//	}
+//	else if(!strcmp(buf, USB_HUB7_REMOVE))
+//	{
+//		num = 7;
+//		return true;
+//	}
+//	else if(!strcmp(buf, USB_HUB8_REMOVE))
+//	{
+//		num = 8;
+//		return true;
+//	}
+//	return false;
+//}
 
 bool DeviceDetect::usb_pull_dev(const char* buf, int& num, int len)
 {
@@ -1463,8 +1557,11 @@ void DeviceDetect::send_usb_info()
 	int size = getFsSize(DEV_EXTERNAL_SDCARD_PATH, &total, &free);
 	if(size > 0)
 	{
-		//USBHUB* pHub = &global_hub_info[9];
+#ifdef ONECLIENT
+		USBHUB* pHub = &global_hub_info[9];
+#else
 		USBHUB* pHub = ((USBHUB*)(global_ptrUh + sizeof(USBHUB) * 9));
+#endif
 		pHub->state = 4;
 		pHub->type = 4;
 		pHub->bInUse = true;
