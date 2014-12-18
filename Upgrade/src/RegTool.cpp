@@ -36,6 +36,7 @@ bool RegTool::GetPrivateProfileInt(char* lpAppName, char* lpKeyName, int& Value,
 
 bool RegTool::WritePrivateProfileString(char* lpAppName, char* lpKeyName, char* Value, char* lpFileName)
 {
+	write_profile_string(lpAppName, lpKeyName, Value, lpFileName);
 	return true;
 }
 

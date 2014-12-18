@@ -18,7 +18,7 @@ public:
 	static void write_sys_log(const char* szWriteString);
 	static void write_sys_log(int nWrite);
 private:
-	static const int SIZE=100;
+	static const int SIZE=2048;
 };
 
 #endif /* LOGFILE_H_ */

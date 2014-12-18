@@ -65,7 +65,7 @@ typedef struct _USBHUB
 	//char addpath[PATH_MAX];
 	char addpath[200];
 	//char phoneImei[100];//the phone's imei number
-	char phoneImei[10];//the phone's imei number
+	char phoneImei[100];//the phone's imei number
 	bool phoneOpenUsbDebug;
 	//void* hubThreadPointer;
 	int hubThreadId;

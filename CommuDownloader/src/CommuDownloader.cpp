@@ -26,10 +26,12 @@
 //#include <sys/shm.h>
 #include <sys/mman.h>
 #include "SocketSeal.h"
+#include "SocketClient.h"
 #include "LogFile.h"
 #include "DeviceDetect.h"
 //#include "SqliteManager.h"
 #include "InterfaceFull.h"
+#include "SqliteManager.h"
 #include "RegTool.h"
 using namespace std;
 
@@ -45,6 +47,7 @@ using namespace std;
 #define ADB_USB_FILE "adb_usb.ini"
 #define APK_TEMP_PATH  "/data/local/tmp/strongunion/tmp"
 #define APK_DIR_PATH   "/data/local/tmp/strongunion/dir"
+#define APK_ICON_PATH   "/data/local/tmp/strongunion/icon"
 #define APK_KEY_DIR  "/data/.android"
 #define APK_KEY_ROOT   "/root/.android"
 #define APK_ROOT   "/root"
@@ -54,12 +57,20 @@ using namespace std;
 #define DEV_INTERNAL_SDCARD_PATH "/mnt/internal_sd"
 #define UPGRADE					"Upgrade"
 #define SUCCESS					"Success"
+#define VERSION 					"Version"
 #define UPSETTINGPATH			"/data/local/tmp/"
+#define APKINSTALLLOG  		"/mnt/sdcard/DCIM/log"
+#define UPVERSIONINI					"version.ini"
 #define UPUPDATEINI				"update.ini"
+#define DEV_UUID_SERIAL		"uuid"
+#define APK_DB_PATH  				"/data/data/com.apk.main/files/apkdb.db3"
+#define APK_DB_TBLAPKLIST  	"TBapklist"
+#define APK_DB_TBDEVICEREGISTERINFO	"TBDeviceRegisterInfo"
 #define SOCKET_STATR_TOKEN "OK"
 #define SOCKET_RECVPACK_CONTENT	1024
 #define SOCKET_SENDPACK_LENGH	1024
 #define SOCKET_RECVPACK_LENGH	1024
+#define SUPERMAXSIZE  2048
 #define MAXSIZE  1024
 #define ROWSIZE  400
 #define MINSIZE  200
@@ -82,7 +93,27 @@ using namespace std;
 #define SOCKET_CODE_GETWORKMODE  			  	 99
 #define SOCKET_CODE_COMMUSTABLISHED  			 100
 #define SOCKET_CODE_HEARTBEAT  			         104
+#define SOCKET_CODE_REQUESTEXPORTLOG				114
+#define SOCKET_CODE_UPDATADATABASE				115
 
+#define SOCKET_CODE_GETDATABASEAPKINFO			201
+#define SOCKET_CODE_ADDDATABASEAPKINFO			202
+#define SOCKET_CODE_CHANGEDATABASEAPKINFO			203
+#define SOCKET_CODE_DELETEDATABASEAPKINFO			204
+#define SOCKET_CODE_REPROTLOGORDER				205
+#define SOCKET_CODE_REPLYLOGORDER				206
+#define SOCKET_CODE_PRODUCEFLAGID				207
+#define SOCKET_CODE_CONNECTSTATE				208
+
+#define DB_INSERT_TBAPKLIST_COL "apkId, appName, appSize, version, packageName"
+#define DB_UPDATE_TBAPKLIST_SQL 	"UPDATE TBapklist SET  appName = '%s', appSize = %s,  version = '%s', \
+	packageName = '%s'  WHERE apkId= %s"
+#define DB_INSERT_TBDEVICEREGISTERINFO_COL1 "flagId, bankName, bankAddr, version"
+#define DB_INSERT_TBDEVICEREGISTERINFO_COL2 "flagId, bankName, bankAddr"
+#define DB_UPDATE_TBDEVICEREGISTERINFO_SQL 	"UPDATE TBDeviceRegisterInfo SET  flagId = %s, bankName = '%s',  bankAddr = '%s' \
+	WHERE id= %s"
+#define DB_UPDATE_TBDEVICEREGISTERINFO_SQL1 	"UPDATE TBDeviceRegisterInfo SET  version = '%s' WHERE id= %s"
+#define DB_DELETE_TBAPKLIST_ROW_SQL "DELETE FROM TBapklist WHERE apkId = %s"
 
 typedef struct _PHONEVID
 {
@@ -99,6 +130,7 @@ SocketSeal global_sock_srv;
 //SqliteManager global_sql_mgr;
 int global_client_fd[10] = { 0 };
 PHONEVID global_phone_vidArr;
+char global_dev_serial[37]={ 0 };
 
 typedef struct _SOCKCLIENTBUF
 {
@@ -106,6 +138,23 @@ typedef struct _SOCKCLIENTBUF
 	int clientFd;
 }SOCKCLIENTBUF;
 
+//class SOCKCLIENTBUF
+//{
+//public:
+//	SOCKCLIENTBUF(int size, void* buf, int fd):clientFd(fd)
+//	{
+//		pBuf = malloc(size);
+//		*((char*)pBuf) = '\0';
+//		memcpy(pBuf, buf, size-1);
+//	}
+//	~SOCKCLIENTBUF()
+//	{
+//		free(pBuf);
+//	}
+//private:
+//	void* pBuf;
+//	int clientFd;
+//};
 
 //typedef struct _USBHUBBINDTHREAD
 //{
@@ -133,7 +182,8 @@ extern char* get_current_path();
 extern char* get_current_path(char* szPath, int nLen);
 extern int replacestr(char *sSrc, const char *sMatchStr, const char *sReplaceStr);
 
-static void* pthread_func_recv(void*);
+static void* pthread_func_recv_put(void*);
+static void* pthread_func_recv_get(void*);
 static void* pthread_func_recv_parse(void*);
 void trim(char* str, char trimstr=' ');
 void parse_code(int code, char* szBuf, int cltFd);
@@ -223,46 +273,46 @@ void remove_client_fd(int nClientFd)
 	global_client_fd[i] = 0;
 }
 
-static void* pthread_func_listen(void* pSockClt)
-{
-	pthread_detach(pthread_self());
-	//pthread_t pt_recv_parse = 0;
-	void* pBuffer = NULL;
-	int sockClt = *(int*)pSockClt;
-	static int ret = 0;
-	while(true)
-	{
-		if(sockClt <= 0)
-			break;
-		//while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
-		while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
-		{
-			//if(sockClt <= 0)
-			if(ret == 2)
-				break;
-		}
-		if(ret == 2)
-		{
-			global_sock_srv.close_client_socket(sockClt);
-			remove_client_fd(sockClt);
-	#ifdef DEBUG
-			char szLog[MINSIZE] = { 0 };
-			sprintf(szLog, "%s:%d!", "remove client socket", sockClt);
-			LogFile::write_sys_log(szLog);
-	#endif
-			break;
-		}
-	}
-	delete (int*)pSockClt;
-	return NULL;
-}
-
-void listen_client_fd(int nClientFd)
-{
-	pthread_t pt_recv = 0;
-	pthread_create(&pt_recv, NULL, pthread_func_listen, new int(nClientFd));
-	pthread_join(pt_recv,NULL);
-}
+//static void* pthread_func_listen(void* pSockClt)
+//{
+//	pthread_detach(pthread_self());
+//	//pthread_t pt_recv_parse = 0;
+//	void* pBuffer = NULL;
+//	int sockClt = *(int*)pSockClt;
+//	static int ret = 0;
+//	while(true)
+//	{
+//		if(sockClt <= 0)
+//			break;
+//		//while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
+//		while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
+//		{
+//			//if(sockClt <= 0)
+//			if(ret == 2)
+//				break;
+//		}
+//		if(ret == 2)
+//		{
+//			global_sock_srv.close_client_socket(sockClt);
+//			remove_client_fd(sockClt);
+//	#ifdef DEBUG
+//			char szLog[MINSIZE] = { 0 };
+//			sprintf(szLog, "%s:%d!", "remove client socket", sockClt);
+//			LogFile::write_sys_log(szLog);
+//	#endif
+//			break;
+//		}
+//	}
+//	delete (int*)pSockClt;
+//	return NULL;
+//}
+//
+//void listen_client_fd(int nClientFd)
+//{
+//	pthread_t pt_recv = 0;
+//	pthread_create(&pt_recv, NULL, pthread_func_listen, new int(nClientFd));
+//	pthread_join(pt_recv,NULL);
+//}
 
 unsigned long get_file_size(const char *path)
 {
@@ -441,6 +491,8 @@ void create_dir()
 	if(!is_file_exist(APK_DIR_PATH))
 		//mkdir(APK_DIR_PATH, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 		mkdir(APK_DIR_PATH, S_IRWXU | S_IRWXG | S_IRWXO);
+	if(!is_file_exist(APK_ICON_PATH))
+		mkdir(APK_ICON_PATH, S_IRWXU | S_IRWXG | S_IRWXO);
 	if(!is_file_exist(APK_TEMP_PATH))
 		mkdir(APK_TEMP_PATH, S_IRWXU | S_IRWXG | S_IRWXO);
 }
@@ -675,12 +727,82 @@ void shmem_rw_uh()
 //	close(fd);
 //}
 
+/**
+ * Create random UUID
+ *
+ * @param buf - buffer to be filled with the uuid string
+ */
+char *random_uuid(char buf[37]) {
+	const char *c = "89ab";
+	char *p = buf;
+	int n;
+	for (n = 0; n < 16; ++n) {
+		int b = rand() % 255;
+		switch (n) {
+		case 6:
+			sprintf(p, "4%x", b % 15);
+			break;
+		case 8:
+			sprintf(p, "%c%x", c[rand() % strlen(c)], b % 15);
+			break;
+		default:
+			sprintf(p, "%02x", b);
+			break;
+		}
+		p += 2;
+		switch (n) {
+		case 3:
+		case 5:
+		case 7:
+		case 9:
+			*p++ = '*';
+			break;
+		}
+	}
+	*p = 0;
+	return buf;
+}
+
+char* create_uuid()
+{
+	FILE * uid;
+	char file[PATH_MAX] = { 0 };
+	static char uuid[37] = { 0 };
+	sprintf(file, "%s%s", get_current_path(), DEV_UUID_SERIAL);
+	if(!is_file_exist(file))
+	{
+		uid = fopen(file, "w");
+		if (NULL == uid) {
+			return 0;
+		}
+		random_uuid(uuid);
+		fwrite(uuid, sizeof(uuid), 1, uid);
+		fclose(uid);
+	}
+	else
+	{
+		uid = fopen(file, "r");
+		if (NULL == uid) {
+			return 0;
+		}
+		fread(uuid, 37, 1, uid);
+		fclose(uid);
+	}
+	return uuid;
+}
+
 int main() {
 	//cout << "!!!Hello World!!!" << endl; // prints !!!Hello World!!!
 	int nCount = 0;
 	find_pid_by_name("center", nCount);
 	if(nCount > 1)
 		exit(1);
+	strcpy(global_dev_serial, create_uuid());
+#ifdef DEBUG
+	char szLog[MINSIZE] = { 0 };
+	sprintf(szLog, "device serial number:%s", global_dev_serial);
+	LogFile::write_sys_log(szLog);
+#endif
 	create_dir();
 	create_bin();
 #ifndef NOTCREATADBKEYFILE
@@ -719,7 +841,7 @@ int main() {
 	pid_t pid;
 	while(1)
 	{
-		int sockClt;
+		//int sockClt;
 		char buf[BUFSIZ] = { 0 }; //数据传送的缓冲区
 //		int len = 0;
 //		*(int*)(buf+4) = htonl(SOCKET_CODE_COMMUSTABLISHED);
@@ -727,7 +849,10 @@ int main() {
 //		memcpy(buf+8, SOCKET_STATR_TOKEN, len);
 //		*(int*)buf = htonl(len+8);
 		int len = grap_pack(buf, SOCKET_CODE_COMMUSTABLISHED, SOCKET_STATR_TOKEN);
-		sockClt = global_sock_srv.accept_client_socket();
+		//sockClt = global_sock_srv.accept_client_socket();
+		SocketClient* sc = global_sock_srv.accept_client_socket();
+		//add_client_fd(sockClt);
+		int sockClt = sc->socket_fd();
 		add_client_fd(sockClt);
 
 #ifndef ONECLIENT
@@ -743,11 +868,15 @@ int main() {
 				//void* pBuffer = NULL;
 				//global_sock_srv.send_socket_packs(buf, len+8, sockClt);
 				global_sock_srv.send_socket_packs(buf, len, sockClt);
-				global_detect.send_usb_info();
 				//add_client_fd(sockClt);
 				//global_sock_srv.receive_socket_packs(buf, BUFSIZ, sockClt);
-				pthread_create(&pt_recv, NULL, pthread_func_recv, new int(sockClt));
+//				int* pSockClt = new int(sockClt);
+//				pthread_create(&pt_recv, NULL, pthread_func_recv_put,  pSockClt);
+//				pthread_create(&pt_recv, NULL, pthread_func_recv_get, pSockClt);
+				pthread_create(&pt_recv, NULL, pthread_func_recv_put, sc);
+				pthread_create(&pt_recv, NULL, pthread_func_recv_get, sc);
 				//pthread_join(pt_recv,NULL); //这个控制程序只能连接一个客户线程
+				global_detect.send_usb_info();
 	//#ifdef DEBUG
 	//			LogFile::write_sys_log(buf, APP_ROOT_PATH);
 	//#endif
@@ -765,19 +894,15 @@ int main() {
 	return 0;
 }
 
-static void* pthread_func_recv(void* pSockClt)
+static void* pthread_func_recv_put(void* pSockClt)
 {
-	pthread_detach(pthread_self());
-	pthread_t pt_recv_parse = 0;
-	void* pBuffer = NULL;
-	int sockClt = *(int*)pSockClt;
 	static int ret = 0;
+	//int sockClt = *(int*)pSockClt;
+	SocketClient* sc = (SocketClient*)pSockClt;
 	while(true)
 	{
-		if(sockClt <= 0)
-			break;
-		//while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
-		while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
+		//while((ret=global_sock_srv.go_for_receive(sockClt)))
+		while((ret=sc->receive_socket_packs()))
 		{
 			//if(sockClt <= 0)
 			if(ret == 2)
@@ -785,39 +910,162 @@ static void* pthread_func_recv(void* pSockClt)
 		}
 		if(ret == 2)
 		{
-			global_sock_srv.close_client_socket(sockClt);
-			//remove_client_fd(sockClt);
-			shutdown(sockClt, SHUT_RDWR);
-	#ifdef DEBUG
-			char szLog[MINSIZE] = { 0 };
-			sprintf(szLog, "%s:%d!", "close client socket", sockClt);
-			LogFile::write_sys_log(szLog);
-	#endif
-			break;
-		}
-		int bufferSize = ntohl((int)*(int*)pBuffer);
 #ifdef DEBUG
 		char szLog[MINSIZE] = { 0 };
+		//sprintf(szLog, "%s:%d!", "close client socket", sockClt);
+		sprintf(szLog, "%s:%d!", "close client socket", sc->socket_fd());
+		LogFile::write_sys_log(szLog);
+#endif
+			//global_sock_srv.close_client_socket(sockClt);
+			global_sock_srv.close_client_socket(sc);
+			//remove_client_fd(sockClt);
+			shutdown(sc->socket_fd(), SHUT_RDWR);
+			//shutdown(sockClt, SHUT_RDWR);
+			break;
+		}
+	}
+//	 *(int*)pSockClt = 0;
+//	delete (int*)pSockClt;
+	return NULL;
+}
+
+static void* pthread_func_recv_get(void* pSockClt)
+{
+#ifdef DEBUG
+	char szLog[MINSIZE] = { 0 };
+#endif
+	pthread_t pt_recv_parse = 0;
+	//void* pBuffer = NULL;
+	//int sockClt = *(int*)pSockClt;
+	static int ret = 0;
+	char buf[SUPERMAXSIZE] = { 0 };
+	SocketClient* sc = (SocketClient*)pSockClt;
+
+//	while(true)
+//	{
+//		if(sockClt <= 0)
+//			break;
+//		//while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
+//		while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
+//		{
+//			//if(sockClt <= 0)
+//			if(ret == 2)
+//				break;
+//		}
+//		if(ret == 2)
+//		{
+//			global_sock_srv.close_client_socket(sockClt);
+//			//remove_client_fd(sockClt);
+//			shutdown(sockClt, SHUT_RDWR);
+//	#ifdef DEBUG
+//			char szLog[MINSIZE] = { 0 };
+//			sprintf(szLog, "%s:%d!", "close client socket", sockClt);
+//			LogFile::write_sys_log(szLog);
+//	#endif
+//			break;
+//		}
+//		int bufferSize = ntohl((int)*(int*)pBuffer);
+//#ifdef DEBUG
+//		char szLog[MINSIZE] = { 0 };
+//		sprintf(szLog, "%s:%d", "Buffer's first section is", bufferSize);
+//		LogFile::write_sys_log(szLog);
+//#endif
+//		SOCKCLIENTBUF* pSckCltBuf = new SOCKCLIENTBUF();
+//		pSckCltBuf->pBuf = pBuffer;
+//		pSckCltBuf->clientFd = sockClt;
+//		if(bufferSize > 0)
+//		{
+//			//pthread_create(&pt_recv_parse, NULL, pthread_func_recv_parse, pBuffer);
+//			pthread_create(&pt_recv_parse, NULL, pthread_func_recv_parse, pSckCltBuf);
+//			//pthread_join(pt_recv_parse,NULL);
+//		}
+//	}
+//	delete (int*)pSockClt;
+
+	while(true)
+	{
+//		if(*(int*)pSockClt <= 0)
+//			break;
+////		while((ret=global_sock_srv.receive_buffer(sockClt, &pBuffer)))
+////		{
+////			//if(sockClt <= 0)
+////			if(ret == 2)
+////				break;
+////		}
+//		if(!global_sock_srv.receive_buffer(sockClt, &pBuffer))
+//			continue;
+//		int bufferSize = ntohl((int)*(int*)pBuffer);
+		ret = sc->receive_buffer(buf);
+		if (ret == 1)
+			continue;
+		else if (ret == 0)
+			break;
+		int bufferSize = ntohl((int) *(int*) buf);
+		buf[bufferSize] = '\0';
+#ifdef DEBUG
 		sprintf(szLog, "%s:%d", "Buffer's first section is", bufferSize);
 		LogFile::write_sys_log(szLog);
 #endif
-		SOCKCLIENTBUF* pSckCltBuf = new SOCKCLIENTBUF();
-		pSckCltBuf->pBuf = pBuffer;
-		pSckCltBuf->clientFd = sockClt;
-		if(bufferSize > 0)
+		char szContent[200] = { 0 };
+		unsigned int code;
+		extract_pack(buf,  code, szContent);
+		if(code == SOCKET_CODE_CONNECTSTATE)
 		{
-			//pthread_create(&pt_recv_parse, NULL, pthread_func_recv_parse, pBuffer);
-			pthread_create(&pt_recv_parse, NULL, pthread_func_recv_parse, pSckCltBuf);
-			pthread_join(pt_recv_parse,NULL);
+#ifdef DEBUG
+			LogFile::write_sys_log("super handle to reply the 208 instruction!");
+#endif
+			int len = grap_pack(buf, SOCKET_CODE_CONNECTSTATE, "1");
+			global_sock_srv.send_socket_packs(buf, len, sc->socket_fd());
+			continue;
+		}
+
+		SOCKCLIENTBUF* pSckCltBuf = new SOCKCLIENTBUF();
+//		pSckCltBuf->pBuf = pBuffer;
+//		pSckCltBuf->clientFd = sockClt;
+		pSckCltBuf->pBuf = malloc(bufferSize + 1);
+		if(pSckCltBuf->pBuf)
+		{
+#ifdef DEBUG
+			sprintf(szLog, "malloc space sucess!");
+			LogFile::write_sys_log(szLog);
+#endif
+			*((char*)pSckCltBuf->pBuf + bufferSize) = '\0';
+			memcpy(pSckCltBuf->pBuf, buf, bufferSize);
+			pSckCltBuf->clientFd = sc->socket_fd();
+
+#ifdef DEBUG
+			sprintf(szLog, "before create parse thread!");
+			LogFile::write_sys_log(szLog);
+#endif
+			if(pthread_create(&pt_recv_parse, NULL, pthread_func_recv_parse, pSckCltBuf))
+			{
+#ifdef DEBUG
+				sprintf(szLog, "create pthread_func_recv_parse thread failed!");
+				LogFile::write_sys_log(szLog);
+#endif
+				free(pSckCltBuf->pBuf);
+				delete pSckCltBuf;
+			}
+//			if(bufferSize > 0)
+//			{
+//				//pthread_create(&pt_recv_parse, NULL, pthread_func_recv_parse, pBuffer);
+//				pthread_create(&pt_recv_parse, NULL, pthread_func_recv_parse, pSckCltBuf);
+//				//pthread_join(pt_recv_parse,NULL);
+//			}
 		}
 	}
-	delete (int*)pSockClt;
+
 	return NULL;
 }
 
 static void* pthread_func_recv_parse(void* pSckCltBuf)
 {
-	pthread_detach(pthread_self());
+#ifdef DEBUG
+	char szLog[MAXSIZE] = { 0 };
+	sprintf(szLog, "start parse the instruction.!");
+	LogFile::write_sys_log(szLog);
+#endif
+	//pthread_detach(pthread_self());
 	SOCKCLIENTBUF* pscb = (SOCKCLIENTBUF*)pSckCltBuf;
 //	unsigned int len = ntohl(*(int*)pBuf);
 //	unsigned int code = ntohl(*(int*)(pBuf+4));
@@ -830,29 +1078,51 @@ static void* pthread_func_recv_parse(void* pSckCltBuf)
 	unsigned int code;
 	char szContent[SOCKET_RECVPACK_CONTENT] = { 0 };
 	extract_pack(pscb->pBuf, code, szContent);
+#ifdef DEBUG
+	sprintf(szLog, "parse the instruc:%d %s.", code, szContent);
+	LogFile::write_sys_log(szLog);
+#endif
 	parse_code(code, szContent, pscb->clientFd);
 	free(pscb->pBuf);
 	delete pscb;
 	return NULL;
 }
 
-int extract_content_info(const char* content, char (*field)[MINSIZE], int count, char separator='_')
+int extract_content_info(const char* content, char (*field)[MINSIZE], int count, const char* separator="_")
 {
 	int i;
 	char* tmp = (char*)content;
 	for(i=0; i<count-1; i++)
 	{
 		//const char* szSep = strstr(tmp, "_");
-		char* szSep = strstr(tmp, "_");
+		char* szSep = strstr(tmp, separator);
 		if(szSep == NULL)
 			break;
 		strncpy((char*)field, tmp, szSep-tmp);
-		tmp = (char*)szSep + 1;
+		tmp = (char*)szSep + strlen(separator);
 		field++;
 	}
 	strcpy((char*)field, tmp);
 	return i+1;
 }
+
+//int extract_content_info(const char* content, char (*field)[MINSIZE], int count)
+//{
+//	int i;
+//	char* tmp = (char*)content;
+//	for(i=0; i<count-1; i++)
+//	{
+//		//const char* szSep = strstr(tmp, "_");
+//		char* szSep = strstr(tmp, "_");
+//		if(szSep == NULL)
+//			break;
+//		strncpy((char*)field, tmp, szSep-tmp);
+//		tmp = (char*)szSep + 1;
+//		field++;
+//	}
+//	strcpy((char*)field, tmp);
+//	return i+1;
+//}
 typedef struct _installApkInfo
 {
 	char apkName[MINSIZE];
@@ -865,7 +1135,7 @@ int install_apk(InstallApkInfo& apkinfo, int count)
 	char szPath[PATH_MAX] = { 0 };
 	char szApkPath[PATH_MAX] = { 0 };
 	get_current_path(szPath, sizeof(szPath));
-	sprintf(szApkPath, "%s%s/%s", szPath, APK_DIR_NAME, apkinfo.apkName);
+	sprintf(szApkPath, "%s%s/\"%s\"", szPath, APK_DIR_NAME, apkinfo.apkName);
 #ifdef DEBUG
 	char szLog[MINSIZE] = { 0 };
 	sprintf(szLog, "Phone:%s, begin istall apk:%s...",
@@ -894,7 +1164,7 @@ static void* pthread_func_install_apk(void* apkinfo)
 	InstallApkInfo* iai = (InstallApkInfo*) apkinfo;
 	char szApkPath[PATH_MAX] = { 0 };
 	get_current_path(szPath, sizeof(szPath));
-	sprintf(szApkPath, "%s%s/%s", szPath, APK_DIR_NAME, iai->apkName);
+	sprintf(szApkPath, "%s%s/\"%s\"", szPath, APK_DIR_NAME, iai->apkName);
 #ifdef DEBUG
 	char szLog[MINSIZE] = { 0 };
 	sprintf(szLog, "Phone:%s, begin istall apk:%s...",
@@ -1012,7 +1282,7 @@ int grap_pack(void* buf, int nCode, const char* content)
 		memcpy((unsigned char*)buf+8, content, nLen);
 		*(int*)buf = htonl(8+nLen);
 #ifdef DEBUG
-		char szLog[MINSIZE] = { 0 };
+		char szLog[MAXSIZE] = { 0 };
 		sprintf(szLog, "The send package is:%d %d %s", 8+nLen,
 				nCode, content);
 		LogFile::write_sys_log(szLog);
@@ -1221,6 +1491,27 @@ int get_upgrade_result()
 	return nSuccess;
 }
 
+void get_upgrade_version(char* ver)
+{
+	char* tmp = strstr(ver, ".zip");
+	if(tmp != NULL)
+		*tmp='\0';
+	else
+	{
+		char szPath[PATH_MAX] = { 0 };
+		sprintf(szPath, "%s%s", UPSETTINGPATH, UPVERSIONINI);
+		RegTool::GetPrivateProfileString(UPGRADE, VERSION, ver, szPath, 0);
+	}
+}
+
+void remove_upgrade_ver_file()
+{
+	char szPath[PATH_MAX] = { 0 };
+	sprintf(szPath, "%s%s", UPSETTINGPATH, UPVERSIONINI);
+	if(is_file_exist(szPath))
+		remove(szPath);
+}
+
 //void handle_phone_imei(char* imei)
 //{
 //	char* tmp = strstr(imei, "###");
@@ -1241,6 +1532,9 @@ void parse_code(int code, char* szBuf, int cltFd)
 {
 	try
 	{
+#ifdef DEBUG
+		char szLog[MAXSIZE] = { 0 };
+#endif
 		char buf[BUFSIZ] = { 0 }; //数据传送的缓冲区
 		char szPath[PATH_MAX] = { 0 };
 		if(code == 50)
@@ -1251,21 +1545,75 @@ void parse_code(int code, char* szBuf, int cltFd)
 		}
 		else if(code == SOCKET_CODE_UPGRADEBOX)
 		{
+			char coninfo[2][MINSIZE];
+			extract_content_info(szBuf, coninfo, 3);
+	#ifdef DEBUG
+			sprintf(szLog, "The code is:%d,The content's %d fields value is:%s %s %s", SOCKET_CODE_UPGRADEBOX, 3,
+					coninfo[0], coninfo[1], coninfo[2]);
+			LogFile::write_sys_log(szLog);
+	#endif
 			get_current_path(szPath, sizeof(szPath));
+			if(strcmp(coninfo[0], "") && coninfo[0]!=NULL)
+			{
+				char szUnzip[PATH_MAX] = { 0 };
+				char szUnzipFile[PATH_MAX] = { 0 };
+				sprintf(szUnzipFile, "%s%s",  UPSETTINGPATH, coninfo[0]);
+				sprintf(szUnzip, "%sunzip  -o %s -d %s",  szPath, szUnzipFile, UPSETTINGPATH);
+#ifdef DEBUG
+				sprintf(szLog, "The extract file command:%s",  szUnzip);
+				LogFile::write_sys_log(szLog);
+#endif
+				if(is_file_exist(szUnzipFile))
+				{
+#ifdef DEBUG
+				sprintf(szLog, "begin extract file:%s",  szUnzipFile);
+				LogFile::write_sys_log(szLog);
+#endif
+					systemdroid(szUnzip);
+					sleep(1);
+					remove(szUnzipFile);
+				}
+			}
 			strcat(szPath, "up");
+#ifdef DEBUG
+				sprintf(szLog, "start the upgarde program %s",  szPath);
+				LogFile::write_sys_log(szLog);
+#endif
 			systemdroid(szPath);
+			//system(szPath);
 			//exit(0);
 			int result = get_upgrade_result();
 			if(result == 1)
 			{
-				int len = grap_pack(buf, code, "1");
-				global_sock_srv.send_socket_packs(buf, len, cltFd);
+				char version[MINSIZE] = { 0 };
+				strncpy(version, coninfo[0], sizeof(version));
+				get_upgrade_version(version);
+				SqliteManager sm(APK_DB_PATH);
+				char szDataSQL[MAXSIZE] = { 0 };
+				sprintf(szDataSQL, DB_UPDATE_TBDEVICEREGISTERINFO_SQL1,  version,  "1");
+				if(sm.execute_sqlite_table(szDataSQL))
+				{
+					int len = grap_pack(buf, code, "1");
+					global_sock_srv.send_socket_packs(buf, len, cltFd);
+#ifdef DEBUG
+					sprintf(szLog, "remove upgrade ver file!");
+					LogFile::write_sys_log(szLog);
+#endif
+					remove_upgrade_ver_file();
+					systemdroid("reboot");
+				}
+				else
+				{
+					int len = grap_pack(buf, code, "2");
+					global_sock_srv.send_socket_packs(buf, len, cltFd);
+				}
 			}
 			else
 			{
 				int len = grap_pack(buf, code, "2");
 				global_sock_srv.send_socket_packs(buf, len, cltFd);
 			}
+			remove_upgrade_ver_file();
 		}
 		else if(code == SOCKET_CODE_REBOOTBOX)
 		{
@@ -1316,9 +1664,6 @@ void parse_code(int code, char* szBuf, int cltFd)
 //		}
 		else if(code == SOCKET_CODE_INSTALLAPK)
 		{
-		#ifdef DEBUG
-			char szLog[MINSIZE] = { 0 };
-		#endif
 		#ifdef DEBUG
 			LogFile::write_sys_log("extract the install apk count info...");
 		#endif
@@ -1382,7 +1727,6 @@ void parse_code(int code, char* szBuf, int cltFd)
 			char coninfo[3][MINSIZE];
 			extract_content_info(szBuf, coninfo, 3);
 	#ifdef DEBUG
-			char szLog[MINSIZE] = { 0 };
 			sprintf(szLog, "The code is:%d,The content's %d fields value is:%s %s %s", SOCKET_CODE_DELBOXAPK, 3,
 					coninfo[0], coninfo[1], coninfo[2]);
 			LogFile::write_sys_log(szLog);
@@ -1405,7 +1749,6 @@ void parse_code(int code, char* szBuf, int cltFd)
 			int nCount = extract_content_info(szBuf, coninfo, 100);
 			//sprintf(sqltext, "%s, '%s'", coninfo[0], coninfo[1]);
 	#ifdef DEBUG
-			char szLog[MINSIZE] = { 0 };
 			sprintf(szLog, "The code is:%d,The content's %d fields value is:", SOCKET_CODE_ADDBOXAPK, nCount);
 			for(int i=0; i<nCount; i++)
 				sprintf(szLog, "%s %s", szLog, coninfo[i]);
@@ -1475,7 +1818,6 @@ void parse_code(int code, char* szBuf, int cltFd)
 			char* szTmp = NULL;
 			int len = 0;
 	#ifdef DEBUG
-			char szLog[MINSIZE] = { 0 };
 			sprintf(szLog, "The code is:%d,The content's:", SOCKET_CODE_GETBOXINFO);
 			LogFile::write_sys_log(szLog);
 	#endif
@@ -1504,7 +1846,17 @@ void parse_code(int code, char* szBuf, int cltFd)
 			LogFile::write_sys_log(szContent);
 	#endif
 			//get the rom version
-			strcat(szContent, "2.1_");
+			char ver[MINSIZE] = { 0 };
+			SqliteManager sm2(APK_DB_PATH);
+			if(sm2.query_sqlite_table(APK_DB_TBDEVICEREGISTERINFO,  "version",  ver))
+			{
+				strcat(szContent, ver);
+				strcat(szContent, "_");
+			}
+			else
+			{
+				strcat(szContent, "3.0_");
+			}
 //			memset(szCmdResult, 0, sizeof(szCmdResult));
 //			strcpy(szCmdString, "cat /system/build.prop | grep \"ro.build.version.release\"");
 //			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
@@ -1587,7 +1939,7 @@ void parse_code(int code, char* szBuf, int cltFd)
 			char total[TINYSIZE] = { 0 };
 			char free[TINYSIZE] = { 0 };
 			GetStorageInfo(total, free, "/data");
-			sprintf(szContent, "%s%s", szContent, free);
+			sprintf(szContent, "%s%s_", szContent, free);
 //			memset(szCmdResult, 0, sizeof(szCmdResult));
 //			strcpy(szCmdString, "cat /proc/meminfo | grep \"MemFree\"");
 //			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
@@ -1608,16 +1960,359 @@ void parse_code(int code, char* szBuf, int cltFd)
 //			{
 //				sprintf(szContent, "%s%s", szContent, " ");
 //			}
-
+			//sprintf(szContent, "%s%s", szContent, global_dev_serial);
+			sprintf(szContent, "%s%s", szContent, create_uuid());
 	#ifdef DEBUG
 			LogFile::write_sys_log(szContent);
 	#endif
+
+			SqliteManager sm(APK_DB_PATH);
+			if(sm.query_sqlite_table_row_num(APK_DB_TBDEVICEREGISTERINFO) > 0)
+			{
+				//sprintf(szContent, "%s_%d", coninfo[0], 1);
+				TABLEENTITY te;
+				sm.query_sqlite_table(APK_DB_TBDEVICEREGISTERINFO,  te);
+				int flagId = atoi(te.result[1+te.column]);
+				sprintf(szContent, "%s_%d", szContent, flagId);
+			}
+			else
+			{
+				sm.insert_sqlite_table(APK_DB_TBDEVICEREGISTERINFO, DB_INSERT_TBDEVICEREGISTERINFO_COL1,
+						"0, '0', '0', '3.0'");
+				sprintf(szContent, "%s_%d", szContent, 0);
+			}
+			sm.close_sqlite_db();
 
 			int nLen = grap_pack(buf, SOCKET_CODE_GETBOXINFO, szContent);
 			global_sock_srv.send_socket_packs(buf, nLen, cltFd);
 		}
 		else if(code == SOCKET_CODE_GETWORKMODE)//delete the instruction
 		{
+		}
+		else if(code == SOCKET_CODE_REQUESTEXPORTLOG)
+		{
+			char coninfo[3][MINSIZE];
+			extract_content_info(szBuf, coninfo, 3);
+	#ifdef DEBUG
+			sprintf(szLog, "The code is:%d,The content's %d fields value is:%s %s %s", code, 3,
+					coninfo[0], coninfo[1], coninfo[2]);
+			LogFile::write_sys_log(szLog);
+	#endif
+			int len = grap_pack(buf, SOCKET_CODE_REPROTLOGORDER, coninfo[0]);
+			//global_sock_srv.send_socket_packs(buf, len, cltFd);
+			send_all_client_packs(buf, len);
+		}
+		else if(code == SOCKET_CODE_GETDATABASEAPKINFO)
+		{
+//			char db[PATH_MAX] = { 0 };
+//			sprintf(db, "%s/%s", APK_DB_PATH, APK_DB_TBLAPKLIST);
+			char szContent[SUPERMAXSIZE] = { 0 };
+			SqliteManager sm(APK_DB_PATH);
+			TABLEENTITY te;
+			sm.query_sqlite_table(APK_DB_TBLAPKLIST,  te);
+			int nCount = te.row;
+#ifdef DEBUG
+			sprintf(szLog, "row:%d column=%d\n",te.row, te.column);
+#endif
+			sprintf(szContent, "%d", nCount);
+		    for( int i=1 ; i<=te.row; i++ ){
+#ifdef DEBUG
+		    	sprintf(szLog, "%sthe %d row is ",szLog, i);
+#endif
+		    	strcat(szContent, "###");
+		        for(int j=i*te.column;j<(i+1)*te.column;j++)
+		        {
+#ifdef DEBUG
+		        	sprintf( szLog, "%s%s ",  szLog, te.result[j]);
+#endif
+		        	if(j==i*te.column)
+		        		sprintf( szContent, "%s%s",  szContent, te.result[j]);
+		        	else
+		        		sprintf( szContent, "%s_%s",  szContent, te.result[j]);
+		        }
+#ifdef DEBUG
+		        sprintf(szLog, "%s\n", szLog);
+#endif
+		    }
+#ifdef DEBUG
+		    LogFile::write_sys_log(szLog);
+#endif
+		    sm.close_sqlite_db();
+			int len = grap_pack(buf, SOCKET_CODE_GETDATABASEAPKINFO, szContent);
+			global_sock_srv.send_socket_packs(buf, len, cltFd);
+		}
+		else if(code == SOCKET_CODE_ADDDATABASEAPKINFO)
+		{
+#ifdef DEBUG
+			char szLog[MAXSIZE] = { 0 };
+#endif
+			char szContent[ROWSIZE] = { 0 };
+			char coninfo[100][MINSIZE] = {{0}, {0}, {0}};
+			extract_content_info(szBuf, coninfo, 100, "###");
+#ifdef DEBUG
+		sprintf(szLog, "The code is:%d,The content's %d fields value is:%s %s %s", code, 3,
+				coninfo[0], coninfo[1], coninfo[2]);
+		LogFile::write_sys_log(szLog);
+#endif
+		int nCount = atoi(coninfo[0]);
+#ifdef DEBUG
+			sprintf(szLog, "Inser item:");
+#endif
+			SqliteManager sm(APK_DB_PATH);
+			for(int i=0; i<nCount; i++)
+			{
+				char coninfo_apk[10][MINSIZE] = {{0}, {0}, {0}};
+				char szDataEntity[MAXSIZE] = { 0 };
+				char szApkPath[PATH_MAX] = { 0 };
+				char szApkIcon[PATH_MAX] = { 0 };;
+				char szApkRealPath[PATH_MAX] = { 0 };
+				char szApkRealIcon[PATH_MAX] = { 0 };
+				extract_content_info(coninfo[i +1], coninfo_apk, 100);
+				sprintf(szDataEntity, "%s,'%s',%s,'%s','%s'", coninfo_apk[0], coninfo_apk[1], coninfo_apk[2],
+						coninfo_apk[3],coninfo_apk[4]);
+#ifdef DEBUG
+				sprintf(szLog, "%s\n%i:%s", szLog, i+1, szDataEntity);
+#endif
+				sprintf(szApkPath, "%s/%s.apk", APK_TEMP_PATH, coninfo_apk[0]);
+				sprintf(szApkIcon, "%s/%s", APK_TEMP_PATH, coninfo_apk[0]);
+#ifdef DEBUG
+				sprintf(szLog, "%s\nApk File Path:%s-end", szLog,  szApkPath);
+				sprintf(szLog, "%s\nApk Icon Path:%s-end", szLog,  szApkIcon);
+#endif
+				if(is_file_exist(szApkPath) && is_file_exist(szApkIcon))
+				{
+#ifdef DEBUG
+					sprintf(szLog, "%s\nApk File %s is exist!-end", szLog, szApkPath);
+					sprintf(szLog, "%s\nApk Icon %s is exist!-end",  szLog, szApkIcon);
+#endif
+					sprintf(szApkRealPath, "%s/%s", APK_DIR_PATH, coninfo_apk[1]);
+					sprintf(szApkRealIcon, "%s/%s", APK_ICON_PATH, coninfo_apk[0]);
+					if(sm.insert_sqlite_table(APK_DB_TBLAPKLIST, DB_INSERT_TBAPKLIST_COL, szDataEntity)
+							&& rename(szApkPath, szApkRealPath) ==0  &&  rename(szApkIcon, szApkRealIcon) ==0)
+					{
+						sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 1);
+					}
+					else
+					{
+						sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 2);
+					}
+				}
+				else
+				{
+					sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 2);
+				}
+			}
+#ifdef DEBUG
+			LogFile::write_sys_log(szLog);
+#endif
+			sm.close_sqlite_db();
+			szContent[strlen(szContent)-1] = '\0';
+			int len = grap_pack(buf, SOCKET_CODE_ADDDATABASEAPKINFO, szContent);
+			global_sock_srv.send_socket_packs(buf, len, cltFd);
+			len = grap_pack(buf, SOCKET_CODE_UPDATADATABASE, APK_DB_TBLAPKLIST);
+			send_all_client_packs(buf, len);
+		}
+		else if(code == SOCKET_CODE_CHANGEDATABASEAPKINFO)
+		{
+#ifdef DEBUG
+			char szLog[MAXSIZE] = { 0 };
+#endif
+			char szContent[ROWSIZE] = { 0 };
+			char coninfo[100][MINSIZE] = {{0}, {0}, {0}};
+			extract_content_info(szBuf, coninfo, 100, "###");
+			int nCount = atoi(coninfo[0]);
+#ifdef DEBUG
+		sprintf(szLog, "The code is:%d,The content's %d fields value is:%s %s %s", code, 3,
+				coninfo[0], coninfo[1], coninfo[2]);
+		LogFile::write_sys_log(szLog);
+#endif
+#ifdef DEBUG
+			sprintf(szLog, "update item:");
+#endif
+			SqliteManager sm(APK_DB_PATH);
+			for(int i=0; i<nCount; i++)
+			{
+				char coninfo_apk[10][MINSIZE] = {{0}, {0}, {0}};
+				char szDataSQL[MAXSIZE] = { 0 };
+				char szApkPath[PATH_MAX] = { 0 };
+				char szApkIcon[PATH_MAX] = { 0 };;
+				char szApkRealPath[PATH_MAX] = { 0 };
+				char szApkRealIcon[PATH_MAX] = { 0 };
+				extract_content_info(coninfo[i +1], coninfo_apk, 100);
+				sprintf(szDataSQL, DB_UPDATE_TBAPKLIST_SQL,  coninfo_apk[1], coninfo_apk[2],
+						coninfo_apk[3],coninfo_apk[4], coninfo_apk[0]);
+#ifdef DEBUG
+				sprintf(szLog, "%s\n%i:%s", szLog,  i+1, szDataSQL);
+#endif
+				sprintf(szApkPath, "%s/%s.apk", APK_TEMP_PATH, coninfo_apk[0]);
+				sprintf(szApkIcon, "%s/%s", APK_TEMP_PATH, coninfo_apk[0]);
+				if(is_file_exist(szApkPath) && is_file_exist(szApkIcon))
+				{
+					char apkName[MINSIZE] = { 0 };
+					sm.query_sqlite_table("TBapklist",  "appName", apkName,  "apkId",  coninfo_apk[0]);
+					sprintf(szApkRealPath, "%s/%s", APK_DIR_PATH, apkName);
+					if(is_file_exist(szApkRealPath))
+						remove(szApkRealPath);
+					sprintf(szApkRealPath, "%s/%s", APK_DIR_PATH, coninfo_apk[1]);
+					sprintf(szApkRealIcon, "%s/%s", APK_ICON_PATH, coninfo_apk[0]);
+					if(sm.execute_sqlite_table(szDataSQL) && rename(szApkPath, szApkRealPath) ==0
+							&&  rename(szApkIcon, szApkRealIcon) ==0)
+					{
+						sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 1);
+					}
+					else
+					{
+						sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 2);
+					}
+				}
+				else
+				{
+					sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 2);
+				}
+			}
+#ifdef DEBUG
+			LogFile::write_sys_log(szLog);
+#endif
+			sm.close_sqlite_db();
+			szContent[strlen(szContent)-1] = '\0';
+			int len = grap_pack(buf, SOCKET_CODE_CHANGEDATABASEAPKINFO, szContent);
+			global_sock_srv.send_socket_packs(buf, len, cltFd);
+			len = grap_pack(buf, SOCKET_CODE_UPDATADATABASE, APK_DB_TBLAPKLIST);
+			send_all_client_packs(buf, len);
+		}
+		else if(code == SOCKET_CODE_DELETEDATABASEAPKINFO)
+		{
+			char szContent[ROWSIZE] = { 0 };
+			char coninfo[100][MINSIZE] = {{0}, {0}, {0}};
+			int fieldCount = extract_content_info(szBuf, coninfo, 100);
+#ifdef DEBUG
+			sprintf(szLog, "The code is:%d,The content's %d fields value is:%s %s %s", code, 3,
+					coninfo[0], coninfo[1], coninfo[2]);
+			LogFile::write_sys_log(szLog);
+#endif
+#ifdef DEBUG
+			sprintf(szLog, "delete item:");
+#endif
+			SqliteManager sm(APK_DB_PATH);
+			char szDataSQL[MAXSIZE] = { 0 };
+			char szApkRealPath[PATH_MAX] = { 0 };
+			char szApkRealIcon[PATH_MAX] = { 0 };
+			if(fieldCount == 1)
+			{
+				sprintf(szDataSQL, DB_DELETE_TBAPKLIST_ROW_SQL, coninfo[0]);
+#ifdef DEBUG
+				sprintf(szLog, "%s", szDataSQL);
+				LogFile::write_sys_log(szLog);
+#endif
+				char apkName[MINSIZE] = { 0 };
+				sm.query_sqlite_table("TBapklist",  "appName", apkName,  "apkId",  coninfo[0]);
+				sprintf(szApkRealPath, "%s/%s", APK_DIR_PATH, apkName);
+				sprintf(szApkRealIcon, "%s/%s", APK_ICON_PATH, coninfo[0]);
+				if(sm.execute_sqlite_table(szDataSQL) )
+				{
+					if(is_file_exist(szApkRealIcon))
+						remove(szApkRealIcon);
+					if(is_file_exist(szApkRealPath))
+						remove(szApkRealPath);
+					sprintf(szContent, "%s_%d", coninfo[0], 1);
+				}
+				else
+				{
+					sprintf(szContent, "%s_%d", coninfo[0], 2);
+				}
+			}
+			else
+			{
+				int nCount = atoi(coninfo[0]);
+				for(int i = 0; i<nCount; i++)
+				{
+					sprintf(szDataSQL, DB_DELETE_TBAPKLIST_ROW_SQL, coninfo[i+1]);
+#ifdef DEBUG
+					sprintf(szLog, "%s\n%d:%s", szLog, i+1, szDataSQL);
+#endif
+					char apkName[MINSIZE] = { 0 };
+					sm.query_sqlite_table("TBapklist",  "appName", apkName,  "apkId",  coninfo[i+1]);
+					sprintf(szApkRealPath, "%s/%s", APK_DIR_PATH, apkName);
+					sprintf(szApkRealIcon, "%s/%s", APK_ICON_PATH, coninfo[i+1]);
+					if(sm.execute_sqlite_table(szDataSQL) )
+					{
+						if(is_file_exist(szApkRealIcon))
+							remove(szApkRealIcon);
+						if(is_file_exist(szApkRealPath))
+							remove(szApkRealPath);
+						sprintf(szContent, "%s%s_%d_", szContent, coninfo[i+1], 1);
+					}
+					else
+					{
+						sprintf(szContent, "%s%s_%d_", szContent, coninfo[i+1], 2);
+					}
+				}
+				szContent[strlen(szContent)-1] = '\0';
+#ifdef DEBUG
+				LogFile::write_sys_log(szLog);
+#endif
+			}
+			sm.close_sqlite_db();
+			int len = grap_pack(buf, SOCKET_CODE_DELETEDATABASEAPKINFO, szContent);
+			global_sock_srv.send_socket_packs(buf, len, cltFd);
+			len = grap_pack(buf, SOCKET_CODE_UPDATADATABASE, APK_DB_TBLAPKLIST);
+			send_all_client_packs(buf, len);
+		}
+		else if(code == SOCKET_CODE_REPROTLOGORDER)
+		{
+			char coninfo[3][MINSIZE];
+			extract_content_info(szBuf, coninfo, 3);
+	#ifdef DEBUG
+			sprintf(szLog, "The code is:%d,The content's %d fields value is:%s %s %s", code, 3,
+					coninfo[0], coninfo[1], coninfo[2]);
+			LogFile::write_sys_log(szLog);
+	#endif
+			int len = grap_pack(buf, SOCKET_CODE_REQUESTEXPORTLOG, NULL);
+			send_all_client_packs(buf, len);
+		}
+		else if(code == SOCKET_CODE_REPLYLOGORDER)
+		{
+			char coninfo[3][MINSIZE];
+			extract_content_info(szBuf, coninfo, 3);
+			int ret = atoi(coninfo[0]);
+			if(ret == 1)
+			{
+				remove(APKINSTALLLOG);
+			}
+		}
+		else if(code == SOCKET_CODE_PRODUCEFLAGID)
+		{
+			char szContent[ROWSIZE] = { 0 };
+			char coninfo[5][MINSIZE] ;
+			memset(coninfo, 0, sizeof(char) * 5 * MINSIZE);
+			extract_content_info(szBuf, coninfo, 3);
+#ifdef DEBUG
+			sprintf(szLog, "The code is:%d,The content's %d fields value is:%s %s %s", code, 3,
+					coninfo[0], coninfo[1], coninfo[2]);
+			LogFile::write_sys_log(szLog);
+#endif
+			int flagId = atoi(coninfo[0]);
+			SqliteManager sm(APK_DB_PATH);
+			if(flagId > 0)
+			{
+				char szDataSQL[MAXSIZE] = { 0 };
+				sprintf(szDataSQL, DB_UPDATE_TBDEVICEREGISTERINFO_SQL,  coninfo[0], coninfo[1], coninfo[2],  "1");
+				if(sm.execute_sqlite_table(szDataSQL))
+				{
+					sprintf(szContent, "%s_%s_%s", coninfo[0], coninfo[1], coninfo[2]);
+					int len = grap_pack(buf, SOCKET_CODE_PRODUCEFLAGID, szContent);
+					global_sock_srv.send_socket_packs(buf, len, cltFd);
+				}
+			}
+			sm.close_sqlite_db();
+		}
+		else if(code == SOCKET_CODE_CONNECTSTATE)
+		{
+#ifdef DEBUG
+			LogFile::write_sys_log("receive the 208 instruction.now reply the 208 instruction!");
+#endif
+			int len = grap_pack(buf, SOCKET_CODE_CONNECTSTATE, "1");
+			global_sock_srv.send_socket_packs(buf, len, cltFd);
 		}
 	}
 	catch(...)

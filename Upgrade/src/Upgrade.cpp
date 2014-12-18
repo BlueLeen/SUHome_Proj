@@ -25,6 +25,7 @@ using namespace std;
 #define SETTINGPATH	"/data/local/tmp/"
 #define SETTINGINI	"setting.ini"
 #define UPDATEINI	"update.ini"
+#define VERSIONINI 	"version.ini"
 #define UPDATELOG   "up.log"
 #define COPY		"Copy"
 #define SRCFILE		"SrcFile"
@@ -34,6 +35,7 @@ using namespace std;
 #define COUNT		"Count"
 #define UPGRADE		"Upgrade"
 #define UPDATE		"Update"
+#define VERSION 	"Version"
 #define REBOOT		"Reboot"
 #define SUCCESS		"Success"
 #define CENTER 		"/data/local/tmp/strongunion/center"
@@ -417,6 +419,15 @@ char* InitPath()
 	return csPath;
 }
 
+char* InitVerPath()
+{
+	static char csPath[PATH_MAX] = {0};
+//	sprintf(csPath, "%s%s", GetPath(), SETTINGINI);
+//	if(!is_file_exist(csPath))
+		sprintf(csPath, "%s%s", SETTINGPATH, VERSIONINI);
+	return csPath;
+}
+
 char* UpdateLogPath()
 {
 	static char csPath[PATH_MAX] = {0};
@@ -465,7 +476,7 @@ int main() {
 	strncpy(szPathBack, szPath, sizeof(szPathBack));
 	snprintf(szTmpBak, sizeof(szTmpBak), "%s.bak", szPath);
 #ifdef DEBUG
-	sprintf(szLog, "before file convert, source file:%s, destination file:%s", szPathBack, szPath);
+	sprintf(szLog, "before file convert, source file:%s, destination file:%s", szPathBack, szTmpBak);
 	write_sys_log(szLog);
 #endif
 	fileconvert(szPathBack, szTmpBak);
@@ -475,6 +486,8 @@ int main() {
 #endif
 	int nUpdate=0;
 	RegTool::GetPrivateProfileInt(UPGRADE, UPDATE, nUpdate, szTmpBak, 0);
+	char version[ROWSIZE] = { 0 };
+	RegTool::GetPrivateProfileString(UPGRADE, VERSION, version, szTmpBak,  "");
 #ifdef DEBUG
 	sprintf(szLog, "update value is:%d.", nUpdate);
 	write_sys_log(szLog);
@@ -497,6 +510,8 @@ int main() {
 	}
 	//RegTool::WritePrivateProfileInt(UPGRADE, SUCCESS, 1, szPath);
 	RegTool::WritePrivateProfileInt(UPGRADE, SUCCESS, 1, szSetting);
+	if(strcmp(version, ""))
+		RegTool::WritePrivateProfileString(UPGRADE,  VERSION, version, InitVerPath());
 	int nReboot=0;
 	RegTool::GetPrivateProfileInt(UPGRADE, REBOOT, nReboot, szTmpBak, 0);
 	if(is_file_exist(szTmpBak))
@@ -515,8 +530,8 @@ int main() {
 		write_sys_log(szLog);
 #endif
 	}
-	if(nReboot == 1)
-		systemdroid("reboot");
+//	if(nReboot == 1)
+//		systemdroid("reboot");
 //	else
 //	{
 //		char szCenter[ROWSIZE] = { 0 };

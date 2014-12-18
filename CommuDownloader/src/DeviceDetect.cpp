@@ -401,20 +401,19 @@ void* DeviceDetect::pthread_func_plug(void* ptr)
 
 	PlugEvent event;
 
+#ifndef ONECLIENT
 #ifdef DEBUG
 	LogFile::write_sys_log("start map share memory.");
 #endif
-
-#ifndef ONECLIENT
 	shmem_rw_uh();
 #endif
 
-#ifdef DEBUG
 #ifndef ONECLIENT
+#ifdef DEBUG
 	sprintf(szLog, "get the map memory::: num:%p->%d, pointer:%p",global_ptrHubNum, *global_ptrHubNum, global_ptrUh);
-#endif
 	LogFile::write_sys_log(szLog);
 	LogFile::write_sys_log("end map share memory.");
+#endif
 #endif
 
 	while(1)
