@@ -45,6 +45,7 @@ using namespace std;
 #define APK_ICONDIR_NAME "icon"
 #define APK_DIR_NAME "dir"
 #define ADB_USB_FILE "adb_usb.ini"
+#define APK_HOME_PATH	"/data/local/tmp/strongunion"
 #define APK_TEMP_PATH  "/data/local/tmp/strongunion/tmp"
 #define APK_DIR_PATH   "/data/local/tmp/strongunion/dir"
 #define APK_ICON_PATH   "/data/local/tmp/strongunion/icon"
@@ -497,7 +498,7 @@ void create_dir()
 		mkdir(APK_TEMP_PATH, S_IRWXU | S_IRWXG | S_IRWXO);
 }
 
-void copy_file(const char* srcFile, char* desFile)
+bool copy_file(const char* srcFile, char* desFile)
 {
 	int from_fd, to_fd;
 	int bytes_read, bytes_write;
@@ -506,11 +507,12 @@ void copy_file(const char* srcFile, char* desFile)
 	if ((from_fd = open(srcFile, O_RDONLY)) == -1) /*open file readonly,返回-1表示出错，否则返回文件描述符*/
 	{
 		fprintf(stderr, "Open %s Error:%s\n", srcFile, strerror(errno));
-		return;
+		return false;
 	}
 	if ((to_fd = open(desFile, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR)) == -1) {
 		fprintf(stderr, "Open %s Error:%s\n", desFile, strerror(errno));
-		exit(1);
+		//exit(1);
+		return false;
 	}
 	while ((bytes_read = read(from_fd, buffer, BUFSIZ))) {
 		/* 一个致命的错误发生了 */
@@ -538,6 +540,7 @@ void copy_file(const char* srcFile, char* desFile)
 	}
 	close(from_fd);
 	close(to_fd);
+	return true;
 }
 
 void create_adbkey_file()
@@ -1046,14 +1049,32 @@ static void* pthread_func_recv_get(void* pSockClt)
 				free(pSckCltBuf->pBuf);
 				delete pSckCltBuf;
 			}
-//			if(bufferSize > 0)
-//			{
-//				//pthread_create(&pt_recv_parse, NULL, pthread_func_recv_parse, pBuffer);
-//				pthread_create(&pt_recv_parse, NULL, pthread_func_recv_parse, pSckCltBuf);
-//				//pthread_join(pt_recv_parse,NULL);
-//			}
 		}
 	}
+
+
+/*	while(true)
+	{
+		ret = sc->receive_buffer(buf);
+		if (ret == 1)
+			continue;
+		else if (ret == 0)
+			break;
+		int bufferSize = ntohl((int) *(int*) buf);
+		buf[bufferSize] = '\0';
+#ifdef DEBUG
+		sprintf(szLog, "%s:%d", "Buffer's first section is", bufferSize);
+		LogFile::write_sys_log(szLog);
+#endif
+		char szContent[200] = { 0 };
+		unsigned int code;
+		extract_pack(buf,  code, szContent);
+#ifdef DEBUG
+	sprintf(szLog, "parse the instruc:%d %s.", code, szContent);
+	LogFile::write_sys_log(szLog);
+#endif
+	parse_code(code, szContent, sc->socket_fd());
+	}*/
 
 	return NULL;
 }
@@ -1821,6 +1842,7 @@ void parse_code(int code, char* szBuf, int cltFd)
 			sprintf(szLog, "The code is:%d,The content's:", SOCKET_CODE_GETBOXINFO);
 			LogFile::write_sys_log(szLog);
 	#endif
+
 			//get the sdk version
 			strcpy(szCmdString, "cat /system/build.prop | grep \"ro.build.version.sdk\"");
 			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
@@ -1845,16 +1867,28 @@ void parse_code(int code, char* szBuf, int cltFd)
 	#ifdef DEBUG
 			LogFile::write_sys_log(szContent);
 	#endif
+
 			//get the rom version
 			char ver[MINSIZE] = { 0 };
 			SqliteManager sm2(APK_DB_PATH);
+#ifdef DEBUG
+			LogFile::write_sys_log("get the rom version");
+#endif
 			if(sm2.query_sqlite_table(APK_DB_TBDEVICEREGISTERINFO,  "version",  ver))
 			{
+#ifdef DEBUG
+				LogFile::write_sys_log("get the rom version success.");
+#endif
 				strcat(szContent, ver);
 				strcat(szContent, "_");
 			}
 			else
 			{
+#ifdef DEBUG
+				LogFile::write_sys_log("get the rom version failed!");
+#endif
+				sm2.insert_sqlite_table(APK_DB_TBDEVICEREGISTERINFO, DB_INSERT_TBDEVICEREGISTERINFO_COL1,
+						"0, ' ', ' ', '3.0'");
 				strcat(szContent, "3.0_");
 			}
 //			memset(szCmdResult, 0, sizeof(szCmdResult));
@@ -2079,7 +2113,7 @@ void parse_code(int code, char* szBuf, int cltFd)
 				sprintf(szLog, "%s\nApk File Path:%s-end", szLog,  szApkPath);
 				sprintf(szLog, "%s\nApk Icon Path:%s-end", szLog,  szApkIcon);
 #endif
-				if(is_file_exist(szApkPath) && is_file_exist(szApkIcon))
+				if(is_file_exist(szApkPath))
 				{
 #ifdef DEBUG
 					sprintf(szLog, "%s\nApk File %s is exist!-end", szLog, szApkPath);
@@ -2087,18 +2121,35 @@ void parse_code(int code, char* szBuf, int cltFd)
 #endif
 					sprintf(szApkRealPath, "%s/%s", APK_DIR_PATH, coninfo_apk[1]);
 					sprintf(szApkRealIcon, "%s/%s", APK_ICON_PATH, coninfo_apk[0]);
-					if(sm.insert_sqlite_table(APK_DB_TBLAPKLIST, DB_INSERT_TBAPKLIST_COL, szDataEntity)
-							&& rename(szApkPath, szApkRealPath) ==0  &&  rename(szApkIcon, szApkRealIcon) ==0)
+					if(is_file_exist(szApkIcon))
 					{
-						sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 1);
+						if(rename(szApkPath, szApkRealPath) ==0  &&  rename(szApkIcon, szApkRealIcon) ==0
+								&&sm.insert_sqlite_table(APK_DB_TBLAPKLIST, DB_INSERT_TBAPKLIST_COL, szDataEntity) )
+						{
+							sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 1);
+						}
+						else
+						{
+							sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 2);
+						}
 					}
 					else
 					{
-						sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 2);
+						sprintf(szApkIcon, "%s/%s", APK_HOME_PATH,  "icon.default");
+						if(rename(szApkPath, szApkRealPath) ==0  &&  copy_file(szApkIcon, szApkRealIcon)
+								&&sm.insert_sqlite_table(APK_DB_TBLAPKLIST, DB_INSERT_TBAPKLIST_COL, szDataEntity) )
+						{
+							sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 1);
+						}
+						else
+						{
+							sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 2);
+						}
 					}
 				}
 				else
 				{
+					sprintf(szLog, "%s\nApk File:%s or Apk Icon:%s is not exist!", szLog,  szApkPath, szApkIcon);
 					sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 2);
 				}
 			}
@@ -2146,7 +2197,7 @@ void parse_code(int code, char* szBuf, int cltFd)
 #endif
 				sprintf(szApkPath, "%s/%s.apk", APK_TEMP_PATH, coninfo_apk[0]);
 				sprintf(szApkIcon, "%s/%s", APK_TEMP_PATH, coninfo_apk[0]);
-				if(is_file_exist(szApkPath) && is_file_exist(szApkIcon))
+				if(is_file_exist(szApkPath) )
 				{
 					char apkName[MINSIZE] = { 0 };
 					sm.query_sqlite_table("TBapklist",  "appName", apkName,  "apkId",  coninfo_apk[0]);
@@ -2155,14 +2206,30 @@ void parse_code(int code, char* szBuf, int cltFd)
 						remove(szApkRealPath);
 					sprintf(szApkRealPath, "%s/%s", APK_DIR_PATH, coninfo_apk[1]);
 					sprintf(szApkRealIcon, "%s/%s", APK_ICON_PATH, coninfo_apk[0]);
-					if(sm.execute_sqlite_table(szDataSQL) && rename(szApkPath, szApkRealPath) ==0
-							&&  rename(szApkIcon, szApkRealIcon) ==0)
+					if(is_file_exist(szApkIcon))
 					{
-						sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 1);
+						if( rename(szApkPath, szApkRealPath) ==0 &&  rename(szApkIcon, szApkRealIcon) ==0
+								&& sm.execute_sqlite_table(szDataSQL) )
+						{
+							sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 1);
+						}
+						else
+						{
+							sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 2);
+						}
 					}
 					else
 					{
-						sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 2);
+						sprintf(szApkIcon, "%s/%s", APK_HOME_PATH,  "icon.default");
+						if( rename(szApkPath, szApkRealPath) ==0 &&  copy_file(szApkIcon, szApkRealIcon)
+								&& sm.execute_sqlite_table(szDataSQL) )
+						{
+							sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 1);
+						}
+						else
+						{
+							sprintf(szContent, "%s%s_%d_",  szContent,  coninfo_apk[0], 2);
+						}
 					}
 				}
 				else

@@ -142,6 +142,9 @@ bool SqliteManager::query_sqlite_table(const char *tablename, const char *field,
     char **azResult;
     int rc;
     sprintf(sql,"SELECT %s FROM %s", field, tablename);
+#ifdef DEBUG
+	LogFile::write_sys_log(sql);
+#endif
     rc = sqlite3_get_table(m_sqdb,sql,&azResult, &nrow , &ncolumn, &errmsg );
     if( rc != SQLITE_OK )
     {
@@ -152,6 +155,11 @@ bool SqliteManager::query_sqlite_table(const char *tablename, const char *field,
 #endif
     	return false;
     }
+#ifdef DEBUG
+	LogFile::write_sys_log("query table sucess.");
+#endif
+    if(nrow == 0)
+    	return false;
     strcpy(value, azResult[1*ncolumn]);
     sqlite3_free_table(azResult);
     return true;
