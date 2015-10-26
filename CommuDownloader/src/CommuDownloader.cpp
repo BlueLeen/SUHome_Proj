@@ -1303,10 +1303,14 @@ int grap_pack(void* buf, int nCode, const char* content)
 		memcpy((unsigned char*)buf+8, content, nLen);
 		*(int*)buf = htonl(8+nLen);
 #ifdef DEBUG
-		char szLog[MAXSIZE] = { 0 };
-		sprintf(szLog, "The send package is:%d %d %s", 8+nLen,
-				nCode, content);
-		LogFile::write_sys_log(szLog);
+		if(nCode != 94)
+		{
+			char szLog[MAXSIZE] = { 0 };
+			sprintf(szLog, "The send package is:%d %d %s", 8+nLen,
+					nCode, content);
+			LogFile::write_sys_log(szLog);
+		}
+
 #endif
 		return nLen+8;
 	}
@@ -1333,12 +1337,15 @@ int extract_pack(void* buf, unsigned int& code, char* szContent)
 	if(len > 8)
 	{
 		memcpy(szContent, (unsigned char*)buf+8, len-8);
+		if(code != 94)
+		{
 #ifdef DEBUG
 		char szLog[MINSIZE] = { 0 };
 		sprintf(szLog, "The receive package is:%d %d %s", len,
 				code, szContent);
 		LogFile::write_sys_log(szLog);
 #endif
+		}
 	}
 	else
 	{
@@ -1689,12 +1696,17 @@ void parse_code(int code, char* szBuf, int cltFd)
 			LogFile::write_sys_log("extract the install apk count info...");
 		#endif
 			char coninfo[100][MINSIZE] = {{0}, {0}, {0}};
-			extract_content_info(szBuf, coninfo, 100);
+#ifdef  CENTER3
 			int nCount = atoi(coninfo[0]);
+#else
+			int nCount = extract_content_info(szBuf, coninfo, 100) -1;
+#endif
+
 		#ifdef DEBUG
 			sprintf(szLog, "total install apk count:%d",  nCount);
 			LogFile::write_sys_log(szLog);
 		#endif
+			//if(nCount > 0)
 			if(nCount > 0)
 			{
 				pthread_t pt_install_all;
@@ -1705,6 +1717,16 @@ void parse_code(int code, char* szBuf, int cltFd)
 			}
 			else
 			{
+#ifndef  CENTER3
+				for(int i=0; i<sizeof(global_hub_info); i++)
+				{
+					if(global_hub_info[i].phoneOpenUsbDebug)
+					{
+						strcpy(coninfo[1],  global_hub_info[i].phoneImei);
+						break;
+					}
+				}
+#endif
 		#ifdef DEBUG
 				sprintf(szLog, "The content's %d fields value is:%s %s", 2,
 						coninfo[0], coninfo[1]);
@@ -1869,6 +1891,7 @@ void parse_code(int code, char* szBuf, int cltFd)
 	#endif
 
 			//get the rom version
+#ifdef CENTER3
 			char ver[MINSIZE] = { 0 };
 			SqliteManager sm2(APK_DB_PATH);
 #ifdef DEBUG
@@ -1891,6 +1914,9 @@ void parse_code(int code, char* szBuf, int cltFd)
 						"0, ' ', ' ', '3.0'");
 				strcat(szContent, "3.0_");
 			}
+#else
+			strcat(szContent, "4.0_");
+#endif
 //			memset(szCmdResult, 0, sizeof(szCmdResult));
 //			strcpy(szCmdString, "cat /system/build.prop | grep \"ro.build.version.release\"");
 //			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
@@ -2000,6 +2026,7 @@ void parse_code(int code, char* szBuf, int cltFd)
 			LogFile::write_sys_log(szContent);
 	#endif
 
+#ifdef CENTER3
 			SqliteManager sm(APK_DB_PATH);
 			if(sm.query_sqlite_table_row_num(APK_DB_TBDEVICEREGISTERINFO) > 0)
 			{
@@ -2016,6 +2043,7 @@ void parse_code(int code, char* szBuf, int cltFd)
 				sprintf(szContent, "%s_%d", szContent, 0);
 			}
 			sm.close_sqlite_db();
+#endif
 
 			int nLen = grap_pack(buf, SOCKET_CODE_GETBOXINFO, szContent);
 			global_sock_srv.send_socket_packs(buf, nLen, cltFd);

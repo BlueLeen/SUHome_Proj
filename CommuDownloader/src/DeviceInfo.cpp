@@ -249,6 +249,7 @@ void DeviceInfo::get_dev_info(char* buf, const char* path)
 			strncpy(m_szProduct, szCmdResult, sizeof(m_szProduct));
 		}
 		//get the imei
+#ifdef OLDIMEI
 		snprintf(szPath, sizeof(szPath), "%s/serial", path);
 		snprintf(szCmdString,  sizeof(szCmdString), "cat %s", szPath);
 		if(is_file_exist(szPath))
@@ -258,6 +259,27 @@ void DeviceInfo::get_dev_info(char* buf, const char* path)
 			replacestr(szCmdResult, "_", "###");
 			strncpy(m_szImei, szCmdResult, sizeof(m_szImei));
 		}
+#else
+		snprintf(szPath, sizeof(szPath), "%s/uevent", path);
+		snprintf(szCmdString,  sizeof(szCmdString), "cat %s | grep DEVNAME", szPath);
+		if(is_file_exist(szPath))
+		{
+			execstream(szCmdString, szCmdResult, sizeof(szCmdResult));
+			trim(szCmdResult);
+			char* szSerialNum=szCmdResult;
+			while((*szSerialNum!='\0') && (*szSerialNum != '='))
+			{
+				szSerialNum++;
+			}
+			if(*szSerialNum == '=')
+			{
+				snprintf(szCmdResult,  sizeof(szCmdResult), "/dev/%s", szSerialNum+1);
+				//strncpy(szCmdResult, szSerialNum+1, sizeof(szCmdResult));
+				replacestr(szCmdResult, "_", "###");
+				strncpy(m_szImei, szCmdResult, sizeof(m_szImei));
+			}
+		}
+#endif
 //		//get the imei
 //		sprintf(szPath, "%s/serial", path);
 //		sprintf(szCmdString, "cat %s", szPath);

@@ -1375,6 +1375,7 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 		LogFile::write_sys_log(szLog);
 #endif
 
+		/*
 		if(binary_search(global_phone_vidArr.phoneVid, global_phone_vidArr.count, tmpVid) < 0)
 		{
 			pHub->type = 1;
@@ -1387,7 +1388,8 @@ void* DeviceDetect::pthread_func_call(void* ptr)
 			nLen = grap_pack(buf, SOCKET_CODE_UPANBEREADY, "1");
 			send_all_client_packs(buf, nLen);
 		}
-		else
+		*/
+//		else
 		{
 			int nLen = 0;
 #ifdef DEBUG
