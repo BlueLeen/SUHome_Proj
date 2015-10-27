@@ -1005,10 +1005,7 @@ static void* pthread_func_recv_get(void* pSockClt)
 			break;
 		int bufferSize = ntohl((int) *(int*) buf);
 		buf[bufferSize] = '\0';
-#ifdef DEBUG
-		sprintf(szLog, "%s:%d", "Buffer's first section is", bufferSize);
-		LogFile::write_sys_log(szLog);
-#endif
+
 		char szContent[200] = { 0 };
 		unsigned int code;
 		extract_pack(buf,  code, szContent);
@@ -1021,6 +1018,32 @@ static void* pthread_func_recv_get(void* pSockClt)
 			global_sock_srv.send_socket_packs(buf, len, sc->socket_fd());
 			continue;
 		}
+		else if(code == SOCKET_CODE_GETAPKLIST)
+		{
+			char szPath[PATH_MAX] = { 0 };
+			char szApkBuf[MAXSIZE];
+			char apklist[300][TINYSIZE];
+			char szApkPath[PATH_MAX] = { 0 };
+			get_current_path(szPath, sizeof(szPath));
+			sprintf(szApkPath, "%s%s", szPath, APK_DIR_NAME);
+			int count = get_all_apk(szApkPath, apklist);
+			memset(szApkBuf, 0, sizeof(szApkBuf));
+			strcpy(szApkBuf, apklist[0]);
+			int i;
+			for(i=1; i<count; i++)
+			{
+				strcat(szApkBuf, "_");
+				strcat(szApkBuf, apklist[i]);
+			}
+			int len = grap_pack(buf, SOCKET_CODE_GETAPKLIST, szApkBuf);
+			global_sock_srv.send_socket_packs(buf, len, sc->socket_fd());
+			continue;
+		}
+
+#ifdef DEBUG
+		sprintf(szLog, "%s:%d", "Buffer's first section is", bufferSize);
+		LogFile::write_sys_log(szLog);
+#endif
 
 		SOCKCLIENTBUF* pSckCltBuf = new SOCKCLIENTBUF();
 //		pSckCltBuf->pBuf = pBuffer;
@@ -1337,15 +1360,16 @@ int extract_pack(void* buf, unsigned int& code, char* szContent)
 	if(len > 8)
 	{
 		memcpy(szContent, (unsigned char*)buf+8, len-8);
+
+#ifdef DEBUG
 		if(code != 94)
 		{
-#ifdef DEBUG
 		char szLog[MINSIZE] = { 0 };
 		sprintf(szLog, "The receive package is:%d %d %s", len,
 				code, szContent);
 		LogFile::write_sys_log(szLog);
-#endif
 		}
+#endif
 	}
 	else
 	{

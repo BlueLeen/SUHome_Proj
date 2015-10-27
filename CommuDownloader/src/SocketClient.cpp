@@ -28,11 +28,11 @@ int SocketClient::receive_socket_packs()
 	{
 		return 2;
 	}
-#ifdef DEBUG
-	char szLog[200] = { 0 };
-	sprintf(szLog, "<<<<<<<<receive data length:%d>>>>>>>>>", len);
-	LogFile::write_sys_log(szLog);
-#endif
+//#ifdef DEBUG
+//	char szLog[200] = { 0 };
+//	sprintf(szLog, "<<<<<<<<receive data length:%d>>>>>>>>>", len);
+//	LogFile::write_sys_log(szLog);
+//#endif
 	m_rb.putData(buf, len);
 	return 0;
 }
