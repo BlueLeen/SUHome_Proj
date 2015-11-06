@@ -60,6 +60,7 @@ using namespace std;
 #define SUCCESS					"Success"
 #define VERSION 					"Version"
 #define UPSETTINGPATH			"/data/local/tmp/"
+#define APP_LOG_FILE  "log"
 #define APKINSTALLLOG  		"/mnt/sdcard/DCIM/log"
 #define UPVERSIONINI					"version.ini"
 #define UPUPDATEINI				"update.ini"
@@ -806,6 +807,9 @@ int main() {
 	sprintf(szLog, "device serial number:%s", global_dev_serial);
 	LogFile::write_sys_log(szLog);
 #endif
+	char szLogPath[MAXSIZE]={0};
+	sprintf(szLogPath, "%s%s", UPSETTINGPATH, APP_LOG_FILE);
+	remove(szLogPath);
 	create_dir();
 	create_bin();
 #ifndef NOTCREATADBKEYFILE
@@ -1039,6 +1043,11 @@ static void* pthread_func_recv_get(void* pSockClt)
 			global_sock_srv.send_socket_packs(buf, len, sc->socket_fd());
 			continue;
 		}
+		else if(code == 0)
+		{
+			continue;
+		}
+
 
 #ifdef DEBUG
 		sprintf(szLog, "%s:%d", "Buffer's first section is", bufferSize);
@@ -1121,7 +1130,20 @@ static void* pthread_func_recv_parse(void* pSckCltBuf)
 //	memcpy(szContent, (unsigned char*)pscb->pBuf+8, len-8);
 	unsigned int code;
 	char szContent[SOCKET_RECVPACK_CONTENT] = { 0 };
-	extract_pack(pscb->pBuf, code, szContent);
+	try
+	{
+		extract_pack(pscb->pBuf, code, szContent);
+	}catch(...)
+	{
+#ifdef DEBUG
+		sprintf(szLog, "Error:The instruction is illegal.!");
+		LogFile::write_sys_log(szLog);
+#endif
+		free(pscb->pBuf);
+		delete pscb;
+		return NULL;
+	}
+
 #ifdef DEBUG
 	sprintf(szLog, "parse the instruc:%d %s.", code, szContent);
 	LogFile::write_sys_log(szLog);
